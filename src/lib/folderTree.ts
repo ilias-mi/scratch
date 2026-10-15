@@ -57,7 +57,10 @@ export function buildFolderTree(
       const ap = pinnedIds.has(a.id);
       const bp = pinnedIds.has(b.id);
       if (ap !== bp) return ap ? -1 : 1;
-      return b.modified - a.modified;
+      return a.title.localeCompare(b.title, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
     });
     node.children.forEach(sortNode);
   }
