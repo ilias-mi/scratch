@@ -7,7 +7,13 @@ import { GitProvider } from "./context/GitContext";
 import { TooltipProvider, Toaster } from "./components/ui";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SidebarResizeHandle } from "./components/layout/SidebarResizeHandle";
-import { SIDEBAR_DEFAULT_PX } from "./lib/sidebar";
+import {
+  SIDEBAR_DEFAULT_PX,
+  SIDEBAR_PEEK_HIDE_DELAY_MS,
+  SIDEBAR_PEEK_TOLERANCE_PX,
+  SIDEBAR_PEEK_TOP_OFFSET_PX,
+  SIDEBAR_PEEK_TRIGGER_PX,
+} from "./lib/sidebar";
 import { Editor } from "./components/editor/Editor";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import { FolderPicker } from "./components/layout/FolderPicker";
@@ -97,7 +103,66 @@ function AppContent() {
     };
   }, [syncNotesFolder, reloadSettings]);
 
+  // Hover-reveal: while the sidebar is hidden, moving the pointer near the left edge shows it as an overlay
+  const [sidebarPeek, setSidebarPeek] = useState(false);
+  // Stays set after a peek ends so the sidebar collapses as an overlay instead of shifting the editor
+  const [sidebarOverlayMode, setSidebarOverlayMode] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const sidebarPeeking = sidebarPeek && !sidebarVisible && !focusMode;
+  const sidebarShown = (sidebarVisible && !focusMode) || sidebarPeeking;
+  const sidebarOverlay = sidebarOverlayMode && !sidebarVisible;
+
+  useEffect(() => {
+    if (view !== "notes" || sidebarVisible || focusMode) return;
+
+    let pointerX = 0;
+    let hideTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const cancelHide = () => {
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    };
+
+    const isBeyondTolerance = () => {
+      const sidebar = sidebarRef.current;
+      if (!sidebar) return true;
+      return pointerX > sidebar.getBoundingClientRect().right + SIDEBAR_PEEK_TOLERANCE_PX;
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      pointerX = e.clientX;
+
+      if (!sidebarPeek) {
+        if (e.clientX <= SIDEBAR_PEEK_TRIGGER_PX && e.clientY >= SIDEBAR_PEEK_TOP_OFFSET_PX) {
+          setSidebarOverlayMode(true);
+          setSidebarPeek(true);
+        }
+        return;
+      }
+
+      if (!isBeyondTolerance()) {
+        cancelHide();
+      } else if (!hideTimer) {
+        // Re-check on fire: the sidebar may still have been sliding in when the timer started
+        hideTimer = setTimeout(() => {
+          hideTimer = null;
+          if (isBeyondTolerance()) setSidebarPeek(false);
+        }, SIDEBAR_PEEK_HIDE_DELAY_MS);
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      cancelHide();
+    };
+  }, [view, sidebarVisible, focusMode, sidebarPeek]);
+
   const toggleSidebar = useCallback(() => {
+    setSidebarPeek(false);
+    setSidebarOverlayMode(false);
     setSidebarVisible((prev) => !prev);
   }, []);
 
@@ -468,15 +533,16 @@ function AppContent() {
 
   return (
     <>
-      <div className="h-full min-h-0 flex bg-bg text-text overflow-hidden">
+      <div className="relative h-full min-h-0 flex bg-bg text-text overflow-hidden">
         {view === "settings" ? (
           <SettingsPage onBack={closeSettings} />
         ) : (
           <>
             <div
+              ref={sidebarRef}
               data-sidebar
-              style={{ width: (!sidebarVisible || focusMode) ? 0 : `var(--sidebar-width, ${SIDEBAR_DEFAULT_PX}px)` }}
-              className={`relative transition-all duration-500 ease-out overflow-hidden ${!sidebarVisible || focusMode ? "opacity-0 -translate-x-4 pointer-events-none" : "opacity-100 translate-x-0"}`}
+              style={{ width: sidebarShown ? `var(--sidebar-width, ${SIDEBAR_DEFAULT_PX}px)` : 0 }}
+              className={`transition-all ease-out overflow-hidden ${sidebarOverlay ? `duration-200 absolute left-0 inset-y-0 z-30${sidebarPeeking ? " shadow-xl" : ""}` : "duration-500 relative"} ${sidebarShown ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4 pointer-events-none"}`}
             >
               <Sidebar onOpenSettings={toggleSettings} />
               {sidebarVisible && !focusMode && <SidebarResizeHandle />}
