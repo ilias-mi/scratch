@@ -6,9 +6,7 @@ export const SIDEBAR_MIN_PX = 180;
 export const SIDEBAR_MAX_PX = 800;
 /** Delay before a hover-revealed sidebar hides after the pointer leaves it. */
 export const SIDEBAR_PEEK_HIDE_DELAY_MS = 150;
-/** Distance from the left window edge within which the pointer reveals a hidden sidebar. */
+/** Distance from the note editor's left edge within which the pointer reveals a hidden sidebar. */
 export const SIDEBAR_PEEK_TRIGGER_PX = 48;
 /** How far past the revealed sidebar's right edge the pointer may travel before it hides. */
 export const SIDEBAR_PEEK_TOLERANCE_PX = 32;
-/** Pointer positions above this (the title bar and window controls) never reveal the sidebar. */
-export const SIDEBAR_PEEK_TOP_OFFSET_PX = 44;

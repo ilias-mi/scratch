@@ -11,7 +11,6 @@ import {
   SIDEBAR_DEFAULT_PX,
   SIDEBAR_PEEK_HIDE_DELAY_MS,
   SIDEBAR_PEEK_TOLERANCE_PX,
-  SIDEBAR_PEEK_TOP_OFFSET_PX,
   SIDEBAR_PEEK_TRIGGER_PX,
 } from "./lib/sidebar";
 import { Editor } from "./components/editor/Editor";
@@ -103,14 +102,14 @@ function AppContent() {
     };
   }, [syncNotesFolder, reloadSettings]);
 
-  // Hover-reveal: while the sidebar is hidden, moving the pointer near the left edge shows it as an overlay
+  // Hover-reveal: while the sidebar is hidden, moving the pointer near the left edge of the
+  // note editor shows it exactly as the toggle button would, and hides it again on leave
   const [sidebarPeek, setSidebarPeek] = useState(false);
-  // Stays set after a peek ends so the sidebar collapses as an overlay instead of shifting the editor
-  const [sidebarOverlayMode, setSidebarOverlayMode] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const sidebarPeeking = sidebarPeek && !sidebarVisible && !focusMode;
+  const sidebarPeekingRef = useRef(sidebarPeeking);
+  sidebarPeekingRef.current = sidebarPeeking;
   const sidebarShown = (sidebarVisible && !focusMode) || sidebarPeeking;
-  const sidebarOverlay = sidebarOverlayMode && !sidebarVisible;
 
   useEffect(() => {
     if (view !== "notes" || sidebarVisible || focusMode) return;
@@ -135,8 +134,12 @@ function AppContent() {
       pointerX = e.clientX;
 
       if (!sidebarPeek) {
-        if (e.clientX <= SIDEBAR_PEEK_TRIGGER_PX && e.clientY >= SIDEBAR_PEEK_TOP_OFFSET_PX) {
-          setSidebarOverlayMode(true);
+        const contentArea =
+          e.target instanceof Element ? e.target.closest("[data-editor-content-area]") : null;
+        if (
+          contentArea &&
+          e.clientX - contentArea.getBoundingClientRect().left <= SIDEBAR_PEEK_TRIGGER_PX
+        ) {
           setSidebarPeek(true);
         }
         return;
@@ -161,8 +164,12 @@ function AppContent() {
   }, [view, sidebarVisible, focusMode, sidebarPeek]);
 
   const toggleSidebar = useCallback(() => {
+    // A peeking sidebar looks open, so toggling it closes it
+    if (sidebarPeekingRef.current) {
+      setSidebarPeek(false);
+      return;
+    }
     setSidebarPeek(false);
-    setSidebarOverlayMode(false);
     setSidebarVisible((prev) => !prev);
   }, []);
 
@@ -533,7 +540,7 @@ function AppContent() {
 
   return (
     <>
-      <div className="relative h-full min-h-0 flex bg-bg text-text overflow-hidden">
+      <div className="h-full min-h-0 flex bg-bg text-text overflow-hidden">
         {view === "settings" ? (
           <SettingsPage onBack={closeSettings} />
         ) : (
@@ -542,14 +549,14 @@ function AppContent() {
               ref={sidebarRef}
               data-sidebar
               style={{ width: sidebarShown ? `var(--sidebar-width, ${SIDEBAR_DEFAULT_PX}px)` : 0 }}
-              className={`transition-all ease-out overflow-hidden ${sidebarOverlay ? `duration-200 absolute left-0 inset-y-0 z-30${sidebarPeeking ? " shadow-xl" : ""}` : "duration-500 relative"} ${sidebarShown ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4 pointer-events-none"}`}
+              className={`relative transition-all duration-500 ease-out overflow-hidden ${sidebarShown ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4 pointer-events-none"}`}
             >
               <Sidebar onOpenSettings={toggleSettings} />
-              {sidebarVisible && !focusMode && <SidebarResizeHandle />}
+              {sidebarShown && <SidebarResizeHandle />}
             </div>
             <Editor
               onToggleSidebar={toggleSidebar}
-              sidebarVisible={sidebarVisible}
+              sidebarVisible={sidebarVisible || sidebarPeeking}
               focusMode={focusMode}
               onEditorReady={(editor) => {
                 editorRef.current = editor;
