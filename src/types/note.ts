@@ -19,6 +19,7 @@ export interface ThemeSettings {
 
 export type FontFamily = "system-sans" | "serif" | "monospace";
 export type TextDirection = "auto" | "ltr" | "rtl";
+export type HeadingIndicatorMode = "focused" | "outline";
 export type EditorWidth = "narrow" | "normal" | "wide" | "full" | "custom";
 
 export interface EditorFontSettings {
@@ -54,6 +55,7 @@ export interface Settings {
   editorWidth?: EditorWidth;
   customEditorWidthPx?: number;
   sidebarWidthPx?: number;
+  headingIndicator?: HeadingIndicatorMode;
   defaultNoteName?: string;
   interfaceZoom?: number;
   ollamaModel?: string;

@@ -15,6 +15,7 @@ import type {
   FontFamily,
   TextDirection,
   EditorWidth,
+  HeadingIndicatorMode,
   CustomColors,
   ThemeColorKey,
 } from "../types/note";
@@ -115,6 +116,8 @@ interface ThemeContextType {
   setEditorMaxWidthLive: (value: string) => void;
   sidebarWidthPx: number | null;
   setSidebarWidthPx: (px: number | null) => void;
+  headingIndicator: HeadingIndicatorMode;
+  setHeadingIndicator: (mode: HeadingIndicatorMode) => void;
   setSidebarWidthLive: (px: number) => void;
   customColorsLight: CustomColors;
   customColorsDark: CustomColors;
@@ -192,6 +195,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     DEFAULT_CUSTOM_WIDTH_PX
   );
   const [sidebarWidthPx, setSidebarWidthPxState] = useState<number | null>(null);
+  const [headingIndicator, setHeadingIndicatorState] = useState<HeadingIndicatorMode>("focused");
   const [customColorsLight, setCustomColorsLightState] = useState<CustomColors>({});
   const [customColorsDark, setCustomColorsDarkState] = useState<CustomColors>({});
   const [isInitialized, setIsInitialized] = useState(false);
@@ -253,6 +257,9 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         settings.sidebarWidthPx <= SIDEBAR_MAX_PX
       ) {
         setSidebarWidthPxState(settings.sidebarWidthPx);
+      }
+      if (settings.headingIndicator === "focused" || settings.headingIndicator === "outline") {
+        setHeadingIndicatorState(settings.headingIndicator);
       }
       if (settings.customColorsLight) {
         setCustomColorsLightState(settings.customColorsLight);
@@ -400,6 +407,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     setInterfaceZoomState(1.0);
     setCustomEditorWidthPxState(DEFAULT_CUSTOM_WIDTH_PX);
     setSidebarWidthPxState(null);
+    setHeadingIndicatorState("focused");
     setCustomColorsLightState({});
     setCustomColorsDarkState({});
     try {
@@ -412,6 +420,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         interfaceZoom: 1.0,
         customEditorWidthPx: undefined,
         sidebarWidthPx: undefined,
+        headingIndicator: undefined,
         customColorsLight: undefined,
         customColorsDark: undefined,
       });
@@ -439,6 +448,17 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       await updateSettings({ ...settings, editorWidth: width });
     } catch (error) {
       console.error("Failed to save editor width:", error);
+    }
+  }, []);
+
+  // Save and set heading indicator view
+  const setHeadingIndicator = useCallback(async (mode: HeadingIndicatorMode) => {
+    setHeadingIndicatorState(mode);
+    try {
+      const settings = await getSettings();
+      await updateSettings({ ...settings, headingIndicator: mode });
+    } catch (error) {
+      console.error("Failed to save heading indicator view:", error);
     }
   }, []);
 
@@ -630,6 +650,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         sidebarWidthPx,
         setSidebarWidthPx,
         setSidebarWidthLive,
+        headingIndicator,
+        setHeadingIndicator,
         customColorsLight,
         customColorsDark,
         setCustomColor,
