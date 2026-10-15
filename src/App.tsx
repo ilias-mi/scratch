@@ -10,6 +10,7 @@ import { SidebarResizeHandle } from "./components/layout/SidebarResizeHandle";
 import {
   SIDEBAR_DEFAULT_PX,
   SIDEBAR_PEEK_HIDE_DELAY_MS,
+  SIDEBAR_PEEK_SHOW_DELAY_MS,
   SIDEBAR_PEEK_TOLERANCE_PX,
   SIDEBAR_PEEK_TRIGGER_PX,
 } from "./lib/sidebar";
@@ -116,6 +117,14 @@ function AppContent() {
 
     let pointerX = 0;
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
+    let showTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const cancelShow = () => {
+      if (showTimer) {
+        clearTimeout(showTimer);
+        showTimer = null;
+      }
+    };
 
     const cancelHide = () => {
       if (hideTimer) {
@@ -136,11 +145,17 @@ function AppContent() {
       if (!sidebarPeek) {
         const contentArea =
           e.target instanceof Element ? e.target.closest("[data-editor-content-area]") : null;
-        if (
-          contentArea &&
-          e.clientX - contentArea.getBoundingClientRect().left <= SIDEBAR_PEEK_TRIGGER_PX
-        ) {
-          setSidebarPeek(true);
+        const inTriggerZone =
+          !!contentArea &&
+          e.clientX - contentArea.getBoundingClientRect().left <= SIDEBAR_PEEK_TRIGGER_PX;
+        // Require a short dwell so a quick flick out of the window doesn't reveal the sidebar
+        if (!inTriggerZone) {
+          cancelShow();
+        } else if (!showTimer) {
+          showTimer = setTimeout(() => {
+            showTimer = null;
+            setSidebarPeek(true);
+          }, SIDEBAR_PEEK_SHOW_DELAY_MS);
         }
         return;
       }
@@ -156,9 +171,19 @@ function AppContent() {
       }
     };
 
+    // Leaving the window cancels a pending reveal
+    const handleMouseOut = (e: MouseEvent) => {
+      if (!e.relatedTarget) cancelShow();
+    };
+
     window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseout", handleMouseOut);
+    window.addEventListener("blur", cancelShow);
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseout", handleMouseOut);
+      window.removeEventListener("blur", cancelShow);
+      cancelShow();
       cancelHide();
     };
   }, [view, sidebarVisible, focusMode, sidebarPeek]);
