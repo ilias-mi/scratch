@@ -64,6 +64,7 @@ import { Frontmatter } from "./Frontmatter";
 import { BlockMathEditor } from "./BlockMathEditor";
 import { LinkEditor } from "./LinkEditor";
 import { SearchToolbar } from "./SearchToolbar";
+import { HeadingIndicator } from "./HeadingIndicator";
 import { SlashCommand } from "./SlashCommand";
 import { Wikilink, type WikilinkStorage } from "./Wikilink";
 import { WikilinkSuggestion } from "./WikilinkSuggestion";
@@ -546,7 +547,7 @@ export function Editor({
   const pinNote = notesCtx?.pinNote;
   const unpinNote = notesCtx?.unpinNote;
   const notes = notesCtx?.notes;
-  const { textDirection } = useTheme();
+  const { textDirection, headingIndicator } = useTheme();
   const [isSaving, setIsSaving] = useState(false);
   // Force re-render when selection changes to update toolbar active states
   const [, setSelectionKey] = useState(0);
@@ -2694,6 +2695,13 @@ export function Editor({
             </>
           )}
         </div>
+        {editor && !sourceMode && !focusMode && (
+          <HeadingIndicator
+            editor={editor}
+            scrollContainerRef={scrollContainerRef}
+            mode={headingIndicator}
+          />
+        )}
       </div>
     </div>
   );

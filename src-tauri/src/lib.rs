@@ -125,6 +125,9 @@ pub struct Settings {
     /// Custom sidebar width in px; `None` means the default width is used.
     #[serde(rename = "sidebarWidthPx")]
     pub sidebar_width_px: Option<u32>,
+    /// Heading indicator view: "focused" (default) or "outline".
+    #[serde(rename = "headingIndicator")]
+    pub heading_indicator: Option<String>,
     #[serde(rename = "ollamaModel")]
     pub ollama_model: Option<String>,
     #[serde(rename = "foldersEnabled")]

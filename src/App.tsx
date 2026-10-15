@@ -7,7 +7,12 @@ import { GitProvider } from "./context/GitContext";
 import { TooltipProvider, Toaster } from "./components/ui";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SidebarResizeHandle } from "./components/layout/SidebarResizeHandle";
-import { SIDEBAR_DEFAULT_PX } from "./lib/sidebar";
+import {
+  SIDEBAR_DEFAULT_PX,
+  SIDEBAR_PEEK_HIDE_DELAY_MS,
+  SIDEBAR_PEEK_TOLERANCE_PX,
+  SIDEBAR_PEEK_TRIGGER_PX,
+} from "./lib/sidebar";
 import { Editor } from "./components/editor/Editor";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import { FolderPicker } from "./components/layout/FolderPicker";
@@ -97,7 +102,74 @@ function AppContent() {
     };
   }, [syncNotesFolder, reloadSettings]);
 
+  // Hover-reveal: while the sidebar is hidden, moving the pointer near the left edge of the
+  // note editor shows it exactly as the toggle button would, and hides it again on leave
+  const [sidebarPeek, setSidebarPeek] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const sidebarPeeking = sidebarPeek && !sidebarVisible && !focusMode;
+  const sidebarPeekingRef = useRef(sidebarPeeking);
+  sidebarPeekingRef.current = sidebarPeeking;
+  const sidebarShown = (sidebarVisible && !focusMode) || sidebarPeeking;
+
+  useEffect(() => {
+    if (view !== "notes" || sidebarVisible || focusMode) return;
+
+    let pointerX = 0;
+    let hideTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const cancelHide = () => {
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    };
+
+    const isBeyondTolerance = () => {
+      const sidebar = sidebarRef.current;
+      if (!sidebar) return true;
+      return pointerX > sidebar.getBoundingClientRect().right + SIDEBAR_PEEK_TOLERANCE_PX;
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      pointerX = e.clientX;
+
+      if (!sidebarPeek) {
+        const contentArea =
+          e.target instanceof Element ? e.target.closest("[data-editor-content-area]") : null;
+        if (
+          contentArea &&
+          e.clientX - contentArea.getBoundingClientRect().left <= SIDEBAR_PEEK_TRIGGER_PX
+        ) {
+          setSidebarPeek(true);
+        }
+        return;
+      }
+
+      if (!isBeyondTolerance()) {
+        cancelHide();
+      } else if (!hideTimer) {
+        // Re-check on fire: the sidebar may still have been sliding in when the timer started
+        hideTimer = setTimeout(() => {
+          hideTimer = null;
+          if (isBeyondTolerance()) setSidebarPeek(false);
+        }, SIDEBAR_PEEK_HIDE_DELAY_MS);
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      cancelHide();
+    };
+  }, [view, sidebarVisible, focusMode, sidebarPeek]);
+
   const toggleSidebar = useCallback(() => {
+    // A peeking sidebar looks open, so toggling it closes it
+    if (sidebarPeekingRef.current) {
+      setSidebarPeek(false);
+      return;
+    }
+    setSidebarPeek(false);
     setSidebarVisible((prev) => !prev);
   }, []);
 
@@ -474,16 +546,17 @@ function AppContent() {
         ) : (
           <>
             <div
+              ref={sidebarRef}
               data-sidebar
-              style={{ width: (!sidebarVisible || focusMode) ? 0 : `var(--sidebar-width, ${SIDEBAR_DEFAULT_PX}px)` }}
-              className={`relative transition-all duration-500 ease-out overflow-hidden ${!sidebarVisible || focusMode ? "opacity-0 -translate-x-4 pointer-events-none" : "opacity-100 translate-x-0"}`}
+              style={{ width: sidebarShown ? `var(--sidebar-width, ${SIDEBAR_DEFAULT_PX}px)` : 0 }}
+              className={`relative transition-all duration-500 ease-out overflow-hidden ${sidebarShown ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4 pointer-events-none"}`}
             >
               <Sidebar onOpenSettings={toggleSettings} />
-              {sidebarVisible && !focusMode && <SidebarResizeHandle />}
+              {sidebarShown && <SidebarResizeHandle />}
             </div>
             <Editor
               onToggleSidebar={toggleSidebar}
-              sidebarVisible={sidebarVisible}
+              sidebarVisible={sidebarVisible || sidebarPeeking}
               focusMode={focusMode}
               onEditorReady={(editor) => {
                 editorRef.current = editor;
