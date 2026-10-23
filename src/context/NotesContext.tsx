@@ -622,27 +622,34 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isCancelled = false;
     let unlisten: (() => void) | undefined;
+    let flushTimer: number | undefined;
+    const pendingIds = new Set<string>();
+
+    // Coalesce a burst of file events into one refresh once the files settle
+    const flush = () => {
+      flushTimer = undefined;
+      const externalChanges = [...pendingIds];
+      pendingIds.clear();
+
+      refreshNotes();
+
+      const currentId = selectedNoteIdRef.current;
+      if (currentId && externalChanges.includes(currentId)) {
+        setHasExternalChanges(true);
+      }
+    };
 
     listen<{ changed_ids: string[] }>("file-change", (event) => {
-      // Don't process if effect was cleaned up
       if (isCancelled) return;
 
-      const changedIds = event.payload.changed_ids || [];
-
       // Filter out notes we recently saved ourselves
-      const externalChanges = changedIds.filter(
-        (id) => !recentlySavedRef.current.has(id)
-      );
+      for (const id of event.payload.changed_ids || []) {
+        if (!recentlySavedRef.current.has(id)) pendingIds.add(id);
+      }
 
-      // Only refresh if there are external changes
-      if (externalChanges.length > 0) {
-        refreshNotes();
-
-        // If the currently selected note was changed externally, set flag (don't auto-reload)
-        const currentId = selectedNoteIdRef.current;
-        if (currentId && externalChanges.includes(currentId)) {
-          setHasExternalChanges(true);
-        }
+      if (pendingIds.size > 0) {
+        window.clearTimeout(flushTimer);
+        flushTimer = window.setTimeout(flush, 500);
       }
     }).then((fn) => {
       if (isCancelled) {
@@ -655,6 +662,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
     return () => {
       isCancelled = true;
+      window.clearTimeout(flushTimer);
       if (unlisten) {
         unlisten();
       }
