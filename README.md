@@ -10,6 +10,10 @@
 > - **Heading indicator** - A heading indicator on the right edge of the editor shows each heading as a line (longer for higher-ranked levels) and its level number, with the current heading highlighted. It follows the cursor after clicks or typing and the scroll position when scrolling, and fades out before it would overlap the text. Two views, selectable in Settings → Appearance:
 >   - **Focused** - Vertically centered, the current heading and its 3 neighbors on each side
 >   - **Full Outline** - Top-aligned, all headings, auto-scrolling when they don't fit
+> - **Callouts** - Turn a passage into a colored callout from the toolbar or the `/` menu: Note, Info, Tip, Important, Definition, Example, Question, Summary, Exam, Warning, and Caution. Saved as GitHub-style `> [!NOTE]` blockquotes, so they render as alerts on GitHub and as plain quotes elsewhere
+> - **Highlights** - Highlight text in yellow, green, blue, pink, or gray from the toolbar (`Cmd+Shift+H` for yellow). Yellow is saved as `==text==`, other colors as `<mark data-color="...">`
+> - **Live reload of external edits** - When the open note changes on disk (e.g. edited by another app or an AI agent), it reloads automatically, keeping the cursor position. If you have unsaved edits, the Refresh button appears instead
+> - **Lower energy use** - The search index no longer writes to disk on every autosave or polls in the background, refreshing the note list only re-reads changed files, and typing no longer re-renders the whole editor
 
 <img src="docs/app-icon.png" alt="Scratch" width="128" height="128" style="border-radius: 22px; margin-bottom: 8px;">
 
@@ -33,7 +37,7 @@ A minimalist, offline-first markdown note-taking app for macOS, Windows, and Lin
 - **Slash commands** - Type `/` to quickly insert headings, lists, code blocks, diagrams, and more
 - **Focus mode** - Distraction-free writing with animated sidebar/toolbar fade (`Cmd+Shift+Enter`)
 - **Edit with Claude Code, OpenAI Codex, OpenCode, or Ollama** - Use your local CLI to edit notes with AI (including fully offline via Ollama)
-- **Works with other AI agents** - Detects external file changes
+- **Works with other AI agents** - Picks up external file changes automatically
 - **Folders** - Opt-in collapsible folder tree with drag-and-drop to organize notes
 - **Keyboard optimized** - Lots of shortcuts and a command palette
 - **Customizable** - Theme, typography, page width, and RTL text direction
@@ -104,6 +108,7 @@ Scratch is designed to be usable without a mouse. Here are the essentials to get
 | `Cmd+,`           | Open settings          |
 | `Cmd+\`           | Toggle sidebar         |
 | `Cmd+B/I`         | Bold/Italic            |
+| `Cmd+Shift+H`     | Highlight              |
 | `Cmd+=/-/0`       | Zoom in/out/reset      |
 | `↑/↓`             | Navigate notes         |
 

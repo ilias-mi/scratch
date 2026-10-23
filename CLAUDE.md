@@ -23,6 +23,8 @@ Runs on every push to `main` and on PRs. Validates frontend build (`tsc` + Vite)
 - `NotesContext` uses a dual context pattern (data/actions separated) for performance.
 - Settings live in two places: app config at `{APP_DATA}/config.json`, per-folder settings at `{NOTES_FOLDER}/.scratch/settings.json`.
 - Tauri v2 permissions go in `src-tauri/capabilities/default.json`.
+- The search index buffers edits and commits only before a search (`SearchIndex::commit_pending`, `ReloadPolicy::Manual`). Don't commit per write: it runs on every autosave. The index is rebuilt on startup, so uncommitted edits are never lost.
+- The file watcher emits every event; the frontend coalesces them with a trailing debounce, so the final write is never dropped.
 
 ## Coding Conventions
 
@@ -32,7 +34,7 @@ Runs on every push to `main` and on PRs. Validates frontend build (`tsc` + Vite)
 - No commented-out code or TODOs in production code
 - Use `React.memo` for expensive list-item components
 - Use `useCallback`/`useMemo` for performance-critical paths
-- Debounce user-triggered operations (auto-save 300ms, search 150ms, file watcher 500ms, git status 1000ms)
+- Debounce user-triggered operations (auto-save 500ms, 300ms in source mode, search 150ms, file watcher 500ms, git status 1000ms)
 - All operations should be non-blocking (async)
 - Error handling with user-friendly messages
 
