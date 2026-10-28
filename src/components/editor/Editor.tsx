@@ -1,4 +1,5 @@
 import {
+  memo,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -7,6 +8,7 @@ import {
 } from "react";
 import {
   useEditor,
+  useEditorState,
   EditorContent,
   ReactRenderer,
   ReactNodeViewRenderer,
@@ -66,6 +68,18 @@ import { LinkEditor } from "./LinkEditor";
 import { SearchToolbar } from "./SearchToolbar";
 import { HeadingIndicator } from "./HeadingIndicator";
 import { SlashCommand } from "./SlashCommand";
+import {
+  Callout,
+  CALLOUT_LABELS,
+  CALLOUT_TYPES,
+  type CalloutType,
+} from "./Callout";
+import {
+  Highlight,
+  HIGHLIGHT_COLORS,
+  HIGHLIGHT_COLOR_NAMES,
+  type HighlightColor,
+} from "./Highlight";
 import { Wikilink, type WikilinkStorage } from "./Wikilink";
 import { WikilinkSuggestion } from "./WikilinkSuggestion";
 import { EditorWidthHandles } from "./EditorWidthHandle";
@@ -108,6 +122,8 @@ import {
   MarkdownIcon,
   MarkdownOffIcon,
   FolderPlusIcon,
+  HighlighterIcon,
+  CalloutIcon,
 } from "../icons";
 
 function formatDateTime(timestamp: number): string {
@@ -242,6 +258,111 @@ function GridPicker({ onSelect }: GridPickerProps) {
   );
 }
 
+const menuItemClassName =
+  "px-3 py-1.5 text-sm text-text cursor-pointer outline-none hover:bg-bg-muted focus:bg-bg-muted flex items-center gap-2";
+
+interface HighlightMenuProps {
+  editor: TiptapEditor;
+  isActive: boolean;
+}
+
+function HighlightMenu({ editor, isActive }: HighlightMenuProps) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+      <Tooltip content={`Highlight (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}H)`}>
+        <DropdownMenu.Trigger asChild>
+          <ToolbarButton isActive={isActive}>
+            <HighlighterIcon className="w-4.5 h-4.5 stroke-[1.5]" />
+          </ToolbarButton>
+        </DropdownMenu.Trigger>
+      </Tooltip>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className="p-2.5 bg-bg border border-border rounded-md shadow-lg z-50"
+          onCloseAutoFocus={(e) => e.preventDefault()}
+        >
+          <div className="flex items-center gap-2 px-1 py-1">
+            {HIGHLIGHT_COLOR_NAMES.map((color: HighlightColor) => (
+              <button
+                key={color}
+                type="button"
+                title={HIGHLIGHT_COLORS[color]}
+                aria-label={`${HIGHLIGHT_COLORS[color]} highlight`}
+                className="w-6 h-6 rounded-full border border-border hover:scale-110 transition-transform"
+                style={{ backgroundColor: `var(--highlight-${color})` }}
+                onClick={() => {
+                  editor.chain().focus().setHighlight(color).run();
+                  setOpen(false);
+                }}
+              />
+            ))}
+          </div>
+          <DropdownMenu.Item
+            className={cn(menuItemClassName, "mt-1 rounded")}
+            onSelect={() => editor.chain().focus().unsetHighlight().run()}
+          >
+            Remove highlight
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
+interface CalloutMenuProps {
+  editor: TiptapEditor;
+  isActive: boolean;
+}
+
+function CalloutMenu({ editor, isActive }: CalloutMenuProps) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+      <Tooltip content="Callout">
+        <DropdownMenu.Trigger asChild>
+          <ToolbarButton isActive={isActive}>
+            <CalloutIcon className="w-4.5 h-4.5 stroke-[1.5]" />
+          </ToolbarButton>
+        </DropdownMenu.Trigger>
+      </Tooltip>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className="py-1 min-w-40 max-h-80 overflow-y-auto bg-bg border border-border rounded-md shadow-lg z-50"
+          onCloseAutoFocus={(e) => e.preventDefault()}
+        >
+          {CALLOUT_TYPES.map((type: CalloutType) => (
+            <DropdownMenu.Item
+              key={type}
+              className={menuItemClassName}
+              onSelect={() => editor.chain().focus().setCallout(type).run()}
+            >
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: `var(--callout-${type})` }}
+              />
+              {CALLOUT_LABELS[type]}
+            </DropdownMenu.Item>
+          ))}
+          {isActive && (
+            <>
+              <DropdownMenu.Separator className="my-1 h-px bg-border" />
+              <DropdownMenu.Item
+                className={menuItemClassName}
+                onSelect={() => editor.chain().focus().unsetCallout().run()}
+              >
+                Remove callout
+              </DropdownMenu.Item>
+            </>
+          )}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
 interface FormatBarProps {
   editor: TiptapEditor | null;
   onAddLink: () => void;
@@ -249,68 +370,93 @@ interface FormatBarProps {
   onAddImage: () => void;
 }
 
-// FormatBar must re-render with parent to reflect editor.isActive() state changes
-// (editor instance is mutable, so memo would cause stale active states)
-function FormatBar({
+// Subscribes to only the active states it shows, so it re-renders when one changes
+// instead of on every keystroke or cursor move
+const FormatBar = memo(function FormatBar({
   editor,
   onAddLink,
   onAddBlockMath,
   onAddImage,
 }: FormatBarProps) {
   const [tableMenuOpen, setTableMenuOpen] = useState(false);
+  const active = useEditorState({
+    editor,
+    selector: ({ editor: e }) =>
+      e && {
+        bold: e.isActive("bold"),
+        italic: e.isActive("italic"),
+        strike: e.isActive("strike"),
+        highlight: e.isActive("highlight"),
+        heading1: e.isActive("heading", { level: 1 }),
+        heading2: e.isActive("heading", { level: 2 }),
+        heading3: e.isActive("heading", { level: 3 }),
+        heading4: e.isActive("heading", { level: 4 }),
+        bulletList: e.isActive("bulletList"),
+        orderedList: e.isActive("orderedList"),
+        taskList: e.isActive("taskList"),
+        blockquote: e.isActive("blockquote"),
+        callout: e.isActive("callout"),
+        code: e.isActive("code"),
+        codeBlock: e.isActive("codeBlock"),
+        blockMath: e.isActive("blockMath"),
+        link: e.isActive("link"),
+        table: e.isActive("table"),
+      },
+  });
 
-  if (!editor) return null;
+  if (!editor || !active) return null;
 
   return (
     <div className="flex items-center gap-1 px-3 pb-2 border-b border-border overflow-x-auto scrollbar-none">
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleBold().run()}
-        isActive={editor.isActive("bold")}
+        isActive={active.bold}
         title={`Bold (${mod}${isMac ? "" : "+"}B)`}
       >
         <BoldIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleItalic().run()}
-        isActive={editor.isActive("italic")}
+        isActive={active.italic}
         title={`Italic (${mod}${isMac ? "" : "+"}I)`}
       >
         <ItalicIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleStrike().run()}
-        isActive={editor.isActive("strike")}
+        isActive={active.strike}
         title={`Strikethrough (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}S)`}
       >
         <StrikethroughIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
+      <HighlightMenu editor={editor} isActive={active.highlight} />
 
       <div className="w-px h-4.5 border-l border-border mx-2" />
 
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        isActive={editor.isActive("heading", { level: 1 })}
+        isActive={active.heading1}
         title={`Heading 1 (${mod}${isMac ? "" : "+"}${alt}${isMac ? "" : "+"}1)`}
       >
         <Heading1Icon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        isActive={editor.isActive("heading", { level: 2 })}
+        isActive={active.heading2}
         title={`Heading 2 (${mod}${isMac ? "" : "+"}${alt}${isMac ? "" : "+"}2)`}
       >
         <Heading2Icon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-        isActive={editor.isActive("heading", { level: 3 })}
+        isActive={active.heading3}
         title={`Heading 3 (${mod}${isMac ? "" : "+"}${alt}${isMac ? "" : "+"}3)`}
       >
         <Heading3Icon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()}
-        isActive={editor.isActive("heading", { level: 4 })}
+        isActive={active.heading4}
         title={`Heading 4 (${mod}${isMac ? "" : "+"}${alt}${isMac ? "" : "+"}4)`}
       >
         <Heading4Icon className="w-4.5 h-4.5 stroke-[1.5]" />
@@ -320,49 +466,50 @@ function FormatBar({
 
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleBulletList().run()}
-        isActive={editor.isActive("bulletList")}
+        isActive={active.bulletList}
         title={`Bullet List (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}8)`}
       >
         <ListIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        isActive={editor.isActive("orderedList")}
+        isActive={active.orderedList}
         title={`Numbered List (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}7)`}
       >
         <ListOrderedIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleTaskList().run()}
-        isActive={editor.isActive("taskList")}
+        isActive={active.taskList}
         title="Task List"
       >
         <CheckSquareIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        isActive={editor.isActive("blockquote")}
+        isActive={active.blockquote}
         title={`Blockquote (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}B)`}
       >
         <QuoteIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
+      <CalloutMenu editor={editor} isActive={active.callout} />
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleCode().run()}
-        isActive={editor.isActive("code")}
+        isActive={active.code}
         title={`Inline Code (${mod}${isMac ? "" : "+"}E)`}
       >
         <InlineCodeIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-        isActive={editor.isActive("codeBlock")}
+        isActive={active.codeBlock}
         title={`Code Block (${mod}${isMac ? "" : "+"}${alt}${isMac ? "" : "+"}C)`}
       >
         <CodeIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={onAddBlockMath}
-        isActive={editor.isActive("blockMath")}
+        isActive={active.blockMath}
         title="Block Math"
       >
         <BlockMathIcon className="w-4.5 h-4.5 stroke-[1.5]" />
@@ -379,7 +526,7 @@ function FormatBar({
 
       <ToolbarButton
         onClick={onAddLink}
-        isActive={editor.isActive("link")}
+        isActive={active.link}
         title={`Add Link (${mod}${isMac ? "" : "+"}K)`}
       >
         <LinkIcon className="w-4.5 h-4.5 stroke-[1.5]" />
@@ -397,7 +544,7 @@ function FormatBar({
       <DropdownMenu.Root open={tableMenuOpen} onOpenChange={setTableMenuOpen}>
         <Tooltip content="Insert Table">
           <DropdownMenu.Trigger asChild>
-            <ToolbarButton isActive={editor.isActive("table")}>
+            <ToolbarButton isActive={active.table}>
               <TableIcon className="w-4.5 h-4.5 stroke-[1.5]" />
             </ToolbarButton>
           </DropdownMenu.Trigger>
@@ -426,7 +573,7 @@ function FormatBar({
       </DropdownMenu.Root>
     </div>
   );
-}
+});
 
 // Data source for preview mode — bypasses NotesContext
 export interface PreviewModeData {
@@ -550,7 +697,6 @@ export function Editor({
   const { textDirection, headingIndicator } = useTheme();
   const [isSaving, setIsSaving] = useState(false);
   // Force re-render when selection changes to update toolbar active states
-  const [, setSelectionKey] = useState(0);
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
   // Delay transition classes until after initial mount to avoid format bar height animation on note load
@@ -1120,6 +1266,8 @@ export function Editor({
       SlashCommand,
       Wikilink,
       WikilinkSuggestion,
+      Callout,
+      Highlight,
       ScratchBlockMath.configure({
         katexOptions: {
           throwOnError: false,
@@ -1258,10 +1406,6 @@ export function Editor({
       if (isLoadingRef.current) return;
       scheduleSave();
     },
-    onSelectionUpdate: () => {
-      // Trigger re-render to update toolbar active states
-      setSelectionKey((k) => k + 1);
-    },
     // Prevent flash of unstyled content during initial render
     immediatelyRender: false,
   });
@@ -1272,6 +1416,12 @@ export function Editor({
   const loadedModifiedRef = useRef<number | null>(null);
   // Track the last save (note ID and content) to detect our own saves vs external changes
   const lastSaveRef = useRef<{ noteId: string; content: string } | null>(null);
+  // Pull in edits made to the open note outside the app, unless there are unsaved edits
+  useEffect(() => {
+    if (previewMode || !hasExternalChanges || needsSaveRef.current) return;
+    reloadCurrentNote();
+  }, [previewMode, hasExternalChanges, reloadCurrentNote]);
+
   // Track reloadVersion to detect manual refreshes
   const lastReloadVersionRef = useRef(0);
 
@@ -1486,6 +1636,7 @@ export function Editor({
         // Manual reload - update the editor content
         lastReloadVersionRef.current = reloadVersion;
         loadedModifiedRef.current = currentNote.modified;
+        const { from, to } = editor.state.selection;
         isLoadingRef.current = true;
         const manager = editor.storage.markdown?.manager;
         if (manager) {
@@ -1498,6 +1649,11 @@ export function Editor({
         } else {
           editor.commands.setContent(currentNote.content);
         }
+        const docEnd = editor.state.doc.content.size;
+        editor.commands.setTextSelection({
+          from: Math.min(from, docEnd),
+          to: Math.min(to, docEnd),
+        });
         isLoadingRef.current = false;
         return;
       }

@@ -4,8 +4,8 @@ use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::{Duration, Instant};
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
@@ -165,11 +165,15 @@ pub struct FileWatcherState {
     watcher: RecommendedWatcher,
 }
 
-// Tantivy search index state
+// Tantivy search index state.
+// Edits are buffered in the writer and committed lazily before the next search,
+// so typing never writes the index to disk. The index is rebuilt on startup,
+// so uncommitted edits are never lost.
 pub struct SearchIndex {
     index: Index,
     reader: IndexReader,
     writer: Mutex<IndexWriter>,
+    has_pending_changes: AtomicBool,
     #[allow(dead_code)]
     schema: Schema,
     id_field: Field,
@@ -193,17 +197,20 @@ impl SearchIndex {
         let index = Index::create_in_dir(index_path, schema.clone())
             .or_else(|_| Index::open_in_dir(index_path))?;
 
+        // Manual reload: OnCommitWithDelay polls meta.json every 500ms for the app's lifetime
         let reader = index
             .reader_builder()
-            .reload_policy(ReloadPolicy::OnCommitWithDelay)
+            .reload_policy(ReloadPolicy::Manual)
             .try_into()?;
 
-        let writer = index.writer(50_000_000)?; // 50MB buffer
+        // A single indexing thread with tantivy's minimum budget is plenty for notes
+        let writer = index.writer_with_num_threads(1, 15_000_000)?;
 
         Ok(Self {
             index,
             reader,
             writer: Mutex::new(writer),
+            has_pending_changes: AtomicBool::new(false),
             schema,
             id_field,
             title_field,
@@ -213,7 +220,7 @@ impl SearchIndex {
     }
 
     fn index_note(&self, id: &str, title: &str, content: &str, modified: i64) -> Result<()> {
-        let mut writer = self.writer.lock().expect("search writer mutex");
+        let writer = self.writer.lock().expect("search writer mutex");
 
         // Delete existing document with this ID
         let id_term = tantivy::Term::from_field_text(self.id_field, id);
@@ -227,19 +234,29 @@ impl SearchIndex {
             self.modified_field => modified,
         ))?;
 
-        writer.commit()?;
+        self.has_pending_changes.store(true, Ordering::Release);
         Ok(())
     }
 
     fn delete_note(&self, id: &str) -> Result<()> {
-        let mut writer = self.writer.lock().expect("search writer mutex");
+        let writer = self.writer.lock().expect("search writer mutex");
         let id_term = tantivy::Term::from_field_text(self.id_field, id);
         writer.delete_term(id_term);
-        writer.commit()?;
+        self.has_pending_changes.store(true, Ordering::Release);
+        Ok(())
+    }
+
+    // Commit buffered edits and refresh the reader, only if anything changed
+    fn commit_pending(&self) -> Result<()> {
+        if self.has_pending_changes.swap(false, Ordering::AcqRel) {
+            self.writer.lock().expect("search writer mutex").commit()?;
+            self.reader.reload()?;
+        }
         Ok(())
     }
 
     fn search(&self, query_str: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        self.commit_pending()?;
         let searcher = self.reader.searcher();
         let query_parser =
             QueryParser::for_index(&self.index, vec![self.title_field, self.content_field]);
@@ -331,8 +348,18 @@ impl SearchIndex {
         }
 
         writer.commit()?;
+        self.has_pending_changes.store(false, Ordering::Release);
+        self.reader.reload()?;
         Ok(())
     }
+}
+
+// Title and preview of a listed file, reused by list_notes while the file is unchanged
+pub struct ListedFile {
+    modified: Option<std::time::SystemTime>,
+    len: u64,
+    title: String,
+    preview: String,
 }
 
 // App state with improved structure
@@ -342,7 +369,7 @@ pub struct AppState {
     pub notes_cache: RwLock<HashMap<String, NoteMetadata>>,
     pub file_watcher: Mutex<Option<FileWatcherState>>,
     pub search_index: Mutex<Option<SearchIndex>>,
-    pub debounce_map: Arc<Mutex<HashMap<PathBuf, Instant>>>,
+    pub listed_files: Mutex<HashMap<PathBuf, ListedFile>>,
 }
 
 impl Default for AppState {
@@ -353,7 +380,7 @@ impl Default for AppState {
             notes_cache: RwLock::new(HashMap::new()),
             file_watcher: Mutex::new(None),
             search_index: Mutex::new(None),
-            debounce_map: Arc::new(Mutex::new(HashMap::new())),
+            listed_files: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -782,13 +809,6 @@ fn save_settings(notes_folder: &str, settings: &Settings) -> Result<()> {
     Ok(())
 }
 
-// Clean up old entries from debounce map (entries older than 5 seconds)
-fn cleanup_debounce_map(map: &Mutex<HashMap<PathBuf, Instant>>) {
-    let mut map = map.lock().expect("debounce map mutex");
-    let now = Instant::now();
-    map.retain(|_, last| now.duration_since(*last) < Duration::from_secs(5));
-}
-
 // Normalize notes folder path from plain paths and legacy file:// URIs.
 fn normalize_notes_folder_path(path: &str) -> Result<PathBuf, String> {
     let trimmed = path.trim();
@@ -911,10 +931,13 @@ async fn list_notes(state: State<'_, AppState>) -> Result<Vec<NoteMetadata>, Str
         get_effective_ignored_dirs(&settings)
     };
 
+    // Only files whose mtime or size changed since the last listing are read again
+    let mut previous = std::mem::take(&mut *state.listed_files.lock().expect("listed files mutex"));
     let path_clone = path.clone();
-    let discovered = tokio::task::spawn_blocking(move || {
+    let (discovered, listed) = tokio::task::spawn_blocking(move || {
         use walkdir::WalkDir;
         let mut results: Vec<(String, String, String, i64)> = Vec::new();
+        let mut listed: HashMap<PathBuf, ListedFile> = HashMap::new();
         for entry in WalkDir::new(&path_clone)
             .max_depth(10)
             .into_iter()
@@ -925,25 +948,39 @@ async fn list_notes(state: State<'_, AppState>) -> Result<Vec<NoteMetadata>, Str
             if !file_path.is_file() {
                 continue;
             }
-            if let Some(id) = id_from_abs_path(&path_clone, file_path, &ignored_dirs) {
-                if let Ok(content) = std::fs::read_to_string(file_path) {
-                    let modified = entry
-                        .metadata()
-                        .ok()
-                        .and_then(|m| m.modified().ok())
-                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                        .map(|d| d.as_secs() as i64)
-                        .unwrap_or(0);
-                    let title = extract_title(&content);
-                    let preview = generate_preview(&content);
-                    results.push((id, title, preview, modified));
+            let Some(id) = id_from_abs_path(&path_clone, file_path, &ignored_dirs) else {
+                continue;
+            };
+            let Ok(metadata) = entry.metadata() else {
+                continue;
+            };
+            let file_modified = metadata.modified().ok();
+            let file = match previous.remove(file_path) {
+                Some(file) if file.modified == file_modified && file.len == metadata.len() => file,
+                _ => {
+                    let Ok(content) = std::fs::read_to_string(file_path) else {
+                        continue;
+                    };
+                    ListedFile {
+                        modified: file_modified,
+                        len: metadata.len(),
+                        title: extract_title(&content),
+                        preview: generate_preview(&content),
+                    }
                 }
-            }
+            };
+            let modified = file_modified
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            results.push((id, file.title.clone(), file.preview.clone(), modified));
+            listed.insert(file_path.to_path_buf(), file);
         }
-        results
+        (results, listed)
     })
     .await
     .map_err(|e| e.to_string())?;
+    *state.listed_files.lock().expect("listed files mutex") = listed;
 
     let mut notes: Vec<NoteMetadata> = discovered
         .into_iter()
@@ -2135,11 +2172,7 @@ struct FileChangeEvent {
     changed_ids: Vec<String>,
 }
 
-fn setup_file_watcher(
-    app: AppHandle,
-    notes_folder: &str,
-    debounce_map: Arc<Mutex<HashMap<PathBuf, Instant>>>,
-) -> Result<FileWatcherState, String> {
+fn setup_file_watcher(app: AppHandle, notes_folder: &str) -> Result<FileWatcherState, String> {
     let folder_path = PathBuf::from(notes_folder);
     let notes_root = folder_path.clone();
     let app_handle = app.clone();
@@ -2160,23 +2193,6 @@ fn setup_file_watcher(
                         Some(id) => id,
                         None => continue,
                     };
-
-                    // Debounce with cleanup
-                    {
-                        let mut map = debounce_map.lock().expect("debounce map mutex");
-                        let now = Instant::now();
-
-                        if map.len() > 100 {
-                            map.retain(|_, last| now.duration_since(*last) < Duration::from_secs(5));
-                        }
-
-                        if let Some(last) = map.get(path) {
-                            if now.duration_since(*last) < Duration::from_millis(500) {
-                                continue;
-                            }
-                        }
-                        map.insert(path.clone(), now);
-                    }
 
                     let kind = match event.kind {
                         notify::EventKind::Create(_) => "created",
@@ -2263,14 +2279,7 @@ fn start_file_watcher(app: AppHandle, state: State<AppState>) -> Result<(), Stri
             .ok_or("Notes folder not set")?
     };
 
-    // Clean up debounce map before starting
-    cleanup_debounce_map(&state.debounce_map);
-
-    let watcher_state = setup_file_watcher(
-        app,
-        &folder,
-        Arc::clone(&state.debounce_map),
-    )?;
+    let watcher_state = setup_file_watcher(app, &folder)?;
 
     let mut file_watcher = state.file_watcher.lock().expect("file watcher mutex");
     *file_watcher = Some(watcher_state);
@@ -3777,7 +3786,7 @@ pub fn run() {
                 notes_cache: RwLock::new(HashMap::new()),
                 file_watcher: Mutex::new(None),
                 search_index: Mutex::new(search_index),
-                debounce_map: Arc::new(Mutex::new(HashMap::new())),
+                listed_files: Mutex::new(HashMap::new()),
             };
             app.manage(state);
 

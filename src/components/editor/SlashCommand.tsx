@@ -22,6 +22,8 @@ import {
   TableIcon,
   BracketsIcon,
   WorkflowIcon,
+  CalloutIcon,
+  HighlighterIcon,
 } from "../icons";
 import { SlashCommandList, type SlashCommandListRef } from "./SlashCommandList";
 
@@ -113,6 +115,24 @@ const SLASH_COMMANDS: SlashCommandItem[] = [
     aliases: ["quote"],
     command: (editor) => {
       editor.chain().focus().toggleBlockquote().run();
+    },
+  },
+  {
+    title: "Callout",
+    description: "Note, tip, warning and more",
+    icon: <CalloutIcon />,
+    aliases: ["note", "info", "tip", "important", "definition", "example", "question", "summary", "exam", "warning", "caution", "admonition", "alert"],
+    command: (editor) => {
+      editor.chain().focus().setCallout("note").run();
+    },
+  },
+  {
+    title: "Highlight",
+    description: "Highlight the selected text",
+    icon: <HighlighterIcon />,
+    aliases: ["mark", "highlight", "color"],
+    command: (editor) => {
+      editor.chain().focus().setHighlight().run();
     },
   },
   {

@@ -5,8 +5,6 @@ import type { HeadingIndicatorMode } from "../../types/note";
 
 /** Headings shown on each side of the focused one. */
 const NEIGHBOR_COUNT = 3;
-/** Line length per heading level (index 0 = H1); higher-ranked headings get longer lines. */
-const LINE_WIDTH_PX = [28, 22, 17, 13, 9, 6];
 /** A heading counts as focused once its top passes this fraction of the viewport height. */
 const FOCUS_LINE_RATIO = 0.3;
 /** Vertical distance between consecutive rows, and the space between them. */
@@ -14,10 +12,11 @@ const ROW_HEIGHT_PX = 24;
 const ROW_GAP_PX = 8;
 /** Gap to the text column over which the indicator fades out before it would overlap. */
 const FADE_DISTANCE_PX = 32;
-
 interface HeadingEntry {
-  level: number;
   pos: number;
+  level: number;
+  /** Hierarchical number such as "1", "1.2" or "1.2.1"; empty for H1. */
+  label: string;
 }
 
 interface HeadingIndicatorProps {
@@ -26,47 +25,73 @@ interface HeadingIndicatorProps {
   mode: HeadingIndicatorMode;
 }
 
+/**
+ * Numbers headings like an outline: H2s count from 1 within each H1, H3s within each H2, and so on.
+ * H1s carry no number.
+ */
 function collectHeadings(editor: TiptapEditor): HeadingEntry[] {
   const headings: HeadingEntry[] = [];
+  // counters[level] is the running count for that level within the current parent (index 0 unused)
+  const counters = [0, 0, 0, 0, 0, 0, 0];
+
   editor.state.doc.descendants((node, pos) => {
-    if (node.type.name === "heading") {
-      headings.push({ level: node.attrs.level as number, pos });
-      return false;
+    if (node.type.name !== "heading") return true;
+    const level = node.attrs.level as number;
+
+    if (level === 1) {
+      counters.fill(0);
+    } else {
+      counters[level]++;
+      counters.fill(0, level + 1);
     }
-    return true;
+
+    const label = level === 1 ? "" : counters.slice(2, level + 1).filter((n) => n > 0).join(".");
+    headings.push({ pos, level, label });
+    return false;
   });
   return headings;
 }
 
-function HeadingRow({ level, isActive }: { level: number; isActive: boolean }) {
+function HeadingRow({
+  level,
+  label,
+  isActive,
+  onSelect,
+}: Omit<HeadingEntry, "pos"> & { isActive: boolean; onSelect: () => void }) {
+  // H1 has no number, so a line takes its place in the same right-aligned column
   return (
-    <>
-      <div
-        className={cn(
-          "h-0.5 rounded-full transition-all duration-150",
-          isActive ? "bg-text" : "bg-text-muted/40",
-        )}
-        style={{
-          width: LINE_WIDTH_PX[level - 1] ?? LINE_WIDTH_PX[LINE_WIDTH_PX.length - 1],
-          boxShadow: isActive ? "0 0 6px var(--color-text)" : undefined,
-        }}
-      />
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-label={`Go to heading ${label || level}`}
+      onClick={onSelect}
+      className="pointer-events-auto cursor-pointer"
+    >
       <span
         className={cn(
-          "w-2 text-2xs font-medium tabular-nums text-center transition-all duration-150",
+          "flex min-w-6 justify-end text-2xs font-medium tabular-nums transition-all duration-150",
           isActive ? "text-text" : "text-text-muted/60",
         )}
         style={{ textShadow: isActive ? "0 0 6px var(--color-text)" : undefined }}
       >
-        {level}
+        {level === 1 ? (
+          <div
+            className={cn(
+              "w-7 h-0.5 self-center rounded-full transition-colors duration-150",
+              isActive ? "bg-text" : "bg-text-muted/40",
+            )}
+            style={{ boxShadow: isActive ? "0 0 6px var(--color-text)" : undefined }}
+          />
+        ) : (
+          label
+        )}
       </span>
-    </>
+    </button>
   );
 }
 
 /**
- * Right-edge indicator of the heading currently in view. Each heading is drawn as a line
- * (longer for higher-ranked levels) and its level number.
+ * Right-edge indicator of the heading currently in view. Each heading is shown by its outline number.
  * - "focused": vertically centered, the focused heading plus its nearest neighbors
  * - "outline": top-aligned, all headings, auto-scrolled to keep the focused one in view
  * It never receives pointer events, so wheel scrolling always reaches the note.
@@ -83,6 +108,14 @@ export const HeadingIndicator = memo(function HeadingIndicator({
   const indicatorRef = useRef<HTMLDivElement>(null);
   // Clicking or typing makes the cursor's section focused; wheel scrolling hands focus back to the viewport
   const followCursorRef = useRef(false);
+
+  const jumpToHeading = (pos: number) => {
+    editor.chain().focus().setTextSelection(pos + 1).run();
+    const element = editor.view.nodeDOM(pos);
+    if (element instanceof HTMLElement) {
+      element.scrollIntoView({ block: "start" });
+    }
+  };
 
   // Keep the heading list in sync with the document
   useEffect(() => {
@@ -208,7 +241,7 @@ export const HeadingIndicator = memo(function HeadingIndicator({
       <div
         ref={indicatorRef}
         aria-hidden
-        className="absolute right-4 top-8 bottom-4 pointer-events-none w-11 overflow-hidden transition-opacity duration-150"
+        className="absolute right-4 top-8 bottom-4 pointer-events-none w-16 overflow-hidden transition-opacity duration-150"
         style={{
           opacity,
           maskImage: fadeTop || fadeBottom ? edgeFade : undefined,
@@ -225,7 +258,12 @@ export const HeadingIndicator = memo(function HeadingIndicator({
               className="flex items-center gap-1.5 shrink-0"
               style={{ height: ROW_HEIGHT_PX - ROW_GAP_PX }}
             >
-              <HeadingRow level={heading.level} isActive={index === activeIndex} />
+              <HeadingRow
+                level={heading.level}
+                label={heading.label}
+                isActive={index === activeIndex}
+                onSelect={() => jumpToHeading(heading.pos)}
+              />
             </div>
           ))}
         </div>
@@ -241,7 +279,7 @@ export const HeadingIndicator = memo(function HeadingIndicator({
     <div
       ref={indicatorRef}
       aria-hidden
-      className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none w-11 transition-opacity duration-150"
+      className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none w-16 transition-opacity duration-150"
       style={{ opacity, height: (NEIGHBOR_COUNT * 2 + 1) * ROW_HEIGHT_PX }}
     >
       {rendered.map((heading, i) => {
@@ -258,7 +296,12 @@ export const HeadingIndicator = memo(function HeadingIndicator({
               opacity: Math.abs(offset) > NEIGHBOR_COUNT ? 0 : 1,
             }}
           >
-            <HeadingRow level={heading.level} isActive={isActive} />
+            <HeadingRow
+              level={heading.level}
+              label={heading.label}
+              isActive={isActive}
+              onSelect={() => jumpToHeading(heading.pos)}
+            />
           </div>
         );
       })}
