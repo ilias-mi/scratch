@@ -11,7 +11,7 @@
 >   - **Focused** - Vertically centered, the current heading and its 3 neighbors on each side
 >   - **Full Outline** - Top-aligned, all headings, auto-scrolling when they don't fit
 > - **Callouts** - Turn a passage into a colored callout from the toolbar or the `/` menu: Note, Info, Tip, Important, Definition, Example, Question, Summary, Exam, Warning, Caution, and Plain (gray, without a title). Saved as GitHub-style `> [!NOTE]` blockquotes, so they render as alerts on GitHub and as plain quotes elsewhere
-> - **Inline math** - Type `$x^2$` to render inline KaTeX math; click it to edit. Follows the Pandoc rule (no space just inside the `$` signs, no digit right after the closing one), so prices like `$5 and $10` stay plain text
+> - **Inline math** - Typing `$` (or the Inline Math toolbar button) opens a popup that renders the formula live at the cursor as you type; press Space on the empty field for a literal `$`. Click inline math to edit it the same way. In saved notes `$x^2$` is inline math following the Pandoc rule (no space just inside the `$` signs, no digit right after the closing one), so prices like `$5 and $10` stay plain text
 > - **Highlights** - Highlight text in yellow, green, blue, pink, or gray from the toolbar (`Cmd+Shift+H` for yellow). Yellow is saved as `==text==`, other colors as `<mark data-color="...">`
 > - **Live reload of external edits** - When the open note changes on disk (e.g. edited by another app or an AI agent), it reloads automatically, keeping the cursor position. If you have unsaved edits, the Refresh button appears instead
 > - **Filenames independent of content** - A note's filename is its title and no longer follows its first line. Rename a note from its right-click menu in the sidebar, or scroll up once more while at the top of a note to reveal the filename field above it (it stays until you scroll down). New notes open with the filename field focused
@@ -38,13 +38,17 @@ A minimalist, offline-first markdown note-taking app for macOS, Windows, and Lin
 - **Markdown source mode** - Toggle to view and edit raw markdown (`Cmd+Shift+M`)
 - **Syntax highlighting** - 20 languages with GitHub-inspired color scheme
 - **Mermaid diagrams** - Render flowcharts, sequence diagrams, and more in fenced code blocks
-- **KaTeX math** - Render inline `$...$` and block `$$...$$` math equations
+- **KaTeX math** - Inline `$...$` and block `$$...$$` math, edited in a popup with live preview (type `$` for inline math)
+- **Callouts and highlights** - Colored GitHub-style callouts and multi-color text highlights
 - **Wikilinks** - Type `[[` to link between notes with autocomplete
 - **Slash commands** - Type `/` to quickly insert headings, lists, code blocks, diagrams, and more
 - **Focus mode** - Distraction-free writing with animated sidebar/toolbar fade (`Cmd+Shift+Enter`)
 - **Edit with Claude Code, OpenAI Codex, OpenCode, or Ollama** - Use your local CLI to edit notes with AI (including fully offline via Ollama)
 - **Works with other AI agents** - Picks up external file changes automatically
 - **Folders** - Opt-in collapsible folder tree with drag-and-drop to organize notes
+- **Tabs and windows** - Open notes in tabs or in separate windows; each note returns to the scroll position and cursor where you left it
+- **Filenames you control** - A note's filename is its title and never changes with its content; rename from the sidebar or the filename bar above the note
+- **Heading indicator** - Outline numbers for the headings in the current note, along the right edge
 - **Keyboard optimized** - Lots of shortcuts and a command palette
 - **Customizable** - Theme, typography, page width, and RTL text direction
 - **Git integration** - Optional version control with push/pull for multi-device sync
@@ -100,6 +104,11 @@ Scratch is designed to be usable without a mouse. Here are the essentials to get
 | Shortcut          | Action                 |
 | ----------------- | ---------------------- |
 | `Cmd+N`           | New note               |
+| `Cmd+T`           | New note in a new tab  |
+| `Cmd+W`           | Close tab / window     |
+| `Ctrl+Tab`        | Next tab               |
+| `Ctrl+Shift+Tab`  | Previous tab           |
+| `Cmd+Shift+N`     | New window             |
 | `Cmd+D`           | Duplicate note         |
 | `Delete`          | Delete note            |
 | `Cmd+Backspace`   | Delete note            |
@@ -115,6 +124,8 @@ Scratch is designed to be usable without a mouse. Here are the essentials to get
 | `Cmd+\`           | Toggle sidebar         |
 | `Cmd+B/I`         | Bold/Italic            |
 | `Cmd+Shift+H`     | Highlight              |
+| `Cmd+Alt+1`–`4`   | Heading 1–4            |
+| `Cmd+Shift+7/8`   | Numbered/Bullet list   |
 | `Cmd+=/-/0`       | Zoom in/out/reset      |
 | `↑/↓`             | Navigate notes         |
 
