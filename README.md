@@ -10,7 +10,8 @@
 > - **Heading indicator** - A heading indicator on the right edge of the editor shows an outline number for each heading (`1`, `1.1`, `1.2`, `1.2.1`, ...), with the current heading highlighted. H1 headings have no number and are marked with a plain line. It follows the cursor after clicks or typing and the scroll position when scrolling, and fades out before it would overlap the text. Two views, selectable in Settings → Appearance:
 >   - **Focused** - Vertically centered, the current heading and its 3 neighbors on each side
 >   - **Full Outline** - Top-aligned, all headings, auto-scrolling when they don't fit
-> - **Callouts** - Turn a passage into a colored callout from the toolbar or the `/` menu: Note, Info, Tip, Important, Definition, Example, Question, Summary, Exam, Warning, and Caution. Saved as GitHub-style `> [!NOTE]` blockquotes, so they render as alerts on GitHub and as plain quotes elsewhere
+> - **Callouts** - Turn a passage into a colored callout from the toolbar or the `/` menu: Note, Info, Tip, Important, Definition, Example, Question, Summary, Exam, Warning, Caution, and Plain (gray, without a title). Saved as GitHub-style `> [!NOTE]` blockquotes, so they render as alerts on GitHub and as plain quotes elsewhere
+> - **Inline math** - Type `$x^2$` to render inline KaTeX math; click it to edit. Follows the Pandoc rule (no space just inside the `$` signs, no digit right after the closing one), so prices like `$5 and $10` stay plain text
 > - **Highlights** - Highlight text in yellow, green, blue, pink, or gray from the toolbar (`Cmd+Shift+H` for yellow). Yellow is saved as `==text==`, other colors as `<mark data-color="...">`
 > - **Live reload of external edits** - When the open note changes on disk (e.g. edited by another app or an AI agent), it reloads automatically, keeping the cursor position. If you have unsaved edits, the Refresh button appears instead
 > - **Lower energy use** - The search index no longer writes to disk on every autosave or polls in the background, refreshing the note list only re-reads changed files, and typing no longer re-renders the whole editor
@@ -32,7 +33,7 @@ A minimalist, offline-first markdown note-taking app for macOS, Windows, and Lin
 - **Markdown source mode** - Toggle to view and edit raw markdown (`Cmd+Shift+M`)
 - **Syntax highlighting** - 20 languages with GitHub-inspired color scheme
 - **Mermaid diagrams** - Render flowcharts, sequence diagrams, and more in fenced code blocks
-- **KaTeX math** - Render block `$$...$$` math equations
+- **KaTeX math** - Render inline `$...$` and block `$$...$$` math equations
 - **Wikilinks** - Type `[[` to link between notes with autocomplete
 - **Slash commands** - Type `/` to quickly insert headings, lists, code blocks, diagrams, and more
 - **Focus mode** - Distraction-free writing with animated sidebar/toolbar fade (`Cmd+Shift+Enter`)
