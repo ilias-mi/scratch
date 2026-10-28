@@ -6,12 +6,17 @@ export interface BlockMathEditorProps {
   initialLatex: string;
   onSubmit: (latex: string) => void;
   onCancel: () => void;
+  onChange?: (latex: string) => void;
+  // Called when Space is pressed while the field is still empty
+  onLeadingSpace?: () => void;
 }
 
 export const BlockMathEditor = ({
   initialLatex,
   onSubmit,
   onCancel,
+  onChange,
+  onLeadingSpace,
 }: BlockMathEditorProps) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [latex, setLatex] = useState(initialLatex);
@@ -34,6 +39,9 @@ export const BlockMathEditor = ({
     } else if (e.key === "Escape") {
       e.preventDefault();
       onCancel();
+    } else if (e.key === " " && !latex && onLeadingSpace) {
+      e.preventDefault();
+      onLeadingSpace();
     } else if (e.key === "Tab") {
       e.stopPropagation();
     }
@@ -44,7 +52,10 @@ export const BlockMathEditor = ({
       <textarea
         ref={textareaRef}
         value={latex}
-        onChange={(e) => setLatex(e.target.value)}
+        onChange={(e) => {
+          setLatex(e.target.value);
+          onChange?.(e.target.value);
+        }}
         onKeyDown={handleKeyDown}
         placeholder="Enter KaTeX expression..."
         className="w-full h-30 resize-y rounded-md border border-border bg-bg px-2.5 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent/40"

@@ -649,6 +649,21 @@ html.dark {
   border-radius: 0.125rem;
 }
 
+.prose .math-preview {
+  border-radius: 0.25rem;
+  background-color: var(--color-bg-muted);
+  outline: 1px dashed var(--color-border);
+  outline-offset: 1px;
+}
+
+.prose .math-preview--empty {
+  color: var(--color-text-muted);
+}
+
+.prose .math-preview-replaced {
+  display: none;
+}
+
 .prose .block-math-error {
   color: #dc2626;
   font-family: var(--font-mono);
