@@ -46,7 +46,8 @@ A minimalist, offline-first markdown note-taking app for macOS, Windows, and Lin
 - **Edit with Claude Code, OpenAI Codex, OpenCode, or Ollama** - Use your local CLI to edit notes with AI (including fully offline via Ollama)
 - **Works with other AI agents** - Picks up external file changes automatically
 - **Folders** - Opt-in collapsible folder tree with drag-and-drop to organize notes
-- **Tabs and windows** - Open notes in tabs or in separate windows; each note returns to the scroll position and cursor where you left it
+- **Tabs and windows** - Open notes in tabs or in separate windows
+- **Remembered positions** - Each note reopens at the scroll position and cursor where you left it, for 12 hours after you last left it
 - **Filenames you control** - A note's filename is its title and never changes with its content; rename from the sidebar or the filename bar above the note
 - **Heading indicator** - Outline numbers for the headings in the current note, along the right edge
 - **Keyboard optimized** - Lots of shortcuts and a command palette
