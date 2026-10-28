@@ -7,7 +7,7 @@
 >
 > - **Alphabetical notes in folders** - Notes inside folders are sorted A–Z (pinned notes stay on top; root-level notes keep newest-first order)
 > - **Sidebar hover reveal** - When the sidebar is hidden, resting the pointer near the left edge of the note editor reveals it, just like the toggle button would. It hides again once the pointer moves away, with a short dwell time so quick movements out of the window don't trigger it
-> - **Heading indicator** - A heading indicator on the right edge of the editor shows each heading as a line (longer for higher-ranked levels) and its level number, with the current heading highlighted. It follows the cursor after clicks or typing and the scroll position when scrolling, and fades out before it would overlap the text. Two views, selectable in Settings → Appearance:
+> - **Heading indicator** - A heading indicator on the right edge of the editor shows an outline number for each heading (`1`, `1.1`, `1.2`, `1.2.1`, ...), with the current heading highlighted. H1 headings have no number and are marked with a plain line. It follows the cursor after clicks or typing and the scroll position when scrolling, and fades out before it would overlap the text. Two views, selectable in Settings → Appearance:
 >   - **Focused** - Vertically centered, the current heading and its 3 neighbors on each side
 >   - **Full Outline** - Top-aligned, all headings, auto-scrolling when they don't fit
 > - **Callouts** - Turn a passage into a colored callout from the toolbar or the `/` menu: Note, Info, Tip, Important, Definition, Example, Question, Summary, Exam, Warning, and Caution. Saved as GitHub-style `> [!NOTE]` blockquotes, so they render as alerts on GitHub and as plain quotes elsewhere
