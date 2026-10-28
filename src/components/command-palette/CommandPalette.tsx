@@ -28,7 +28,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui";
-import { cleanTitle } from "../../lib/utils";
 import { plainTextFromMarkdown } from "../../lib/plainText";
 import { duplicateNote } from "../../services/notes";
 import {
@@ -50,6 +49,8 @@ import {
   FolderIcon,
   FolderPlusIcon,
   KeyboardIcon,
+  PlusIcon,
+  ExternalLinkIcon,
 } from "../icons";
 import { mod, shift } from "../../lib/platform";
 import type { AiProvider } from "../../services/ai";
@@ -154,6 +155,28 @@ export function CommandPalette({
         action: () => {
           createNote();
           onClose();
+        },
+      },
+      {
+        id: "new-tab",
+        label: "New Tab",
+        shortcut: `${mod} T`,
+        icon: <PlusIcon className="w-4.5 h-4.5 stroke-[1.5]" />,
+        action: () => {
+          createNote(true);
+          onClose();
+        },
+      },
+      {
+        id: "new-window",
+        label: "New Window",
+        shortcut: `${mod} ${shift} N`,
+        icon: <ExternalLinkIcon className="w-4.5 h-4.5 stroke-[1.5]" />,
+        action: () => {
+          onClose();
+          notesService
+            .openNoteWindow(currentNote?.id)
+            .catch(() => toast.error("Failed to open window"));
         },
       },
       {
@@ -595,7 +618,7 @@ export function CommandPalette({
       ...filteredNotes.slice(0, 10).map((note) => ({
         type: "note" as const,
         id: note.id,
-        label: cleanTitle(note.title),
+        label: note.title,
         preview: note.preview,
         action: () => {
           selectNote(note.id);
@@ -709,7 +732,7 @@ export function CommandPalette({
             <>
               {/* Commands section */}
               {filteredCommands.length > 0 && (
-                <div className="space-y-0.5 mb-5">
+                <div className="stack-y-0.5 mb-5">
                   <div className="text-sm font-medium text-text-muted px-2.5 py-1.5">
                     Commands
                   </div>
@@ -731,13 +754,12 @@ export function CommandPalette({
 
               {/* Notes section */}
               {filteredNotes.length > 0 && (
-                <div className="space-y-0.5">
+                <div className="stack-y-0.5">
                   <div className="text-sm font-medium text-text-muted px-2.5 py-1.5">
                     Notes
                   </div>
                   {filteredNotes.slice(0, 10).map((note, i) => {
-                    const title = cleanTitle(note.title);
-                    const firstLetter = title.charAt(0).toUpperCase();
+                    const firstLetter = note.title.charAt(0).toUpperCase();
                     // Clean subtitle: treat whitespace-only or &nbsp; as empty
                     const cleanSubtitle = note.preview
                       ?.replace(/&nbsp;/g, " ")
@@ -747,7 +769,7 @@ export function CommandPalette({
                     return (
                       <div key={note.id} data-index={index}>
                         <CommandItem
-                          label={title}
+                          label={note.title}
                           subtitle={cleanSubtitle}
                           iconText={firstLetter}
                           variant="note"

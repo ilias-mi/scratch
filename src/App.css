@@ -4,6 +4,25 @@
 /* Use class-based dark mode instead of media query */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Vertical spacing between children; use instead of space-y-*. Tailwind compiles space-y-* to
+   :where(.space-y-N > :not(:last-child)), which WebKit tests on every element, so adding or
+   removing any element's last child (a popup, tooltip or toast in <body>) restyles the whole
+   previous child, e.g. the entire app with the open note. A sibling selector has no such cost. */
+/* Use instead of Tailwind's group-* variants. Those compile to :is(:where(.group):hover *), which
+   WebKit can't narrow to .group elements: a hover or focus change on any element restyles
+   everything inside it (the whole note when the pointer moves from the editor to the toolbar).
+   Plain descendant selectors only invalidate inside the group itself. */
+@custom-variant in-group-hover (.group:hover &);
+@custom-variant in-group-focus-visible (.group:focus-visible &);
+@custom-variant in-tab-hover (.group\/tab:hover &);
+@custom-variant in-note-list-focus (.group\/notelist:focus &);
+
+@utility stack-y-* {
+  :where(& > * + *) {
+    margin-block-start: calc(var(--spacing) * --value(number));
+  }
+}
+
 /* Theme color tokens - Light mode (default) */
 :root {
   --color-bg: #ffffff;
@@ -717,6 +736,16 @@ html.dark {
   border-inline-start-color: var(--color-border);
 }
 
+/* The typography plugin's quote marks (dropped in vite.config.ts), with blockquote outside :where()
+   so WebKit only tests paragraphs inside a blockquote */
+.prose blockquote p:first-of-type::before {
+  content: open-quote;
+}
+
+.prose blockquote p:last-of-type::after {
+  content: close-quote;
+}
+
 /* Highlights (==text== is yellow, other colours use data-color) */
 .prose mark {
   background-color: var(--highlight-yellow);
@@ -773,11 +802,17 @@ html.dark {
 .prose .callout[data-callout="plain"]::before {
   content: none;
 }
-.prose .callout > :first-child {
-  margin-top: 0;
+/* margin-trim instead of :first-child / :last-child, as for .prose itself */
+.prose .callout {
+  margin-trim: block;
 }
-.prose .callout > :last-child {
-  margin-bottom: 0;
+@supports not (margin-trim: block) {
+  .prose .callout > :first-child {
+    margin-top: 0;
+  }
+  .prose .callout > :last-child {
+    margin-bottom: 0;
+  }
 }
 
 /* Search match highlighting - uses the selection color */
@@ -837,12 +872,20 @@ html.dark {
   margin-bottom: 0;
 }
 
-.prose > :first-child {
-  margin-top: 0;
+/* No outer margins on the first and last block. margin-trim avoids :first-child / :last-child on
+   every block, which makes WebKit restyle the whole note when an element that had focus is removed */
+.prose {
+  margin-trim: block;
 }
 
-.prose > :last-child {
-  margin-bottom: 0;
+@supports not (margin-trim: block) {
+  .prose > :first-child {
+    margin-top: 0;
+  }
+
+  .prose > :last-child {
+    margin-bottom: 0;
+  }
 }
 
 /* Task list checkbox styles */
@@ -1198,6 +1241,78 @@ table.not-prose th {
   margin: 0.75in;
 }
 
+/* Tiptap's base editor styles (injectCSS is off). Its ".ProseMirror-hideselection *" rules
+   are left out: ProseMirror toggles that class on every node selection, and a rule matching
+   every descendant restyles the whole note each time. The selected node hides the native
+   highlight on its own instead. */
+.ProseMirror {
+  position: relative;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  white-space: break-spaces;
+  -webkit-font-variant-ligatures: none;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0;
+}
+
+.ProseMirror [contenteditable="false"] {
+  white-space: normal;
+}
+
+.ProseMirror [contenteditable="false"] [contenteditable="true"] {
+  white-space: pre-wrap;
+}
+
+.ProseMirror pre {
+  white-space: pre-wrap;
+}
+
+img.ProseMirror-separator {
+  display: inline !important;
+  border: none !important;
+  margin: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.ProseMirror-gapcursor {
+  display: none;
+  pointer-events: none;
+  position: absolute;
+  margin: 0;
+}
+
+.ProseMirror-gapcursor:after {
+  content: "";
+  display: block;
+  position: absolute;
+  top: -2px;
+  width: 20px;
+  border-top: 1px solid black;
+  animation: ProseMirror-cursor-blink 1.1s steps(2, start) infinite;
+}
+
+@keyframes ProseMirror-cursor-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.ProseMirror-focused .ProseMirror-gapcursor {
+  display: block;
+}
+
+.ProseMirror-selectednode::selection,
+.ProseMirror-selectednode *::selection {
+  background: transparent;
+}
+
+/* The editor's size never depends on its content, so contain it: popups, tooltips and other
+   changes outside it then don't make the browser lay out the whole note again */
+[data-editor-scroll] {
+  contain: strict;
+}
+
 @media print {
   /* Disable all transitions to prevent color flashing after print */
   *,
@@ -1287,6 +1402,7 @@ table.not-prose th {
     position: static !important;
     overflow: visible !important;
     height: auto !important;
+    contain: none !important;
   }
 
   /* Make editor full width for printing and remove editor padding */

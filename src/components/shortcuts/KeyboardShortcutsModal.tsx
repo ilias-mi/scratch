@@ -129,7 +129,7 @@ export function KeyboardShortcutsModal({
             {modalCategories.map((category) => (
               <div key={category.title}>
                 <h3 className="font-medium text-text mb-3">{category.title}</h3>
-                <div className="space-y-0.5">
+                <div className="stack-y-0.5">
                   {category.shortcuts.map((shortcut) => (
                     <ShortcutRow
                       key={shortcut.description}

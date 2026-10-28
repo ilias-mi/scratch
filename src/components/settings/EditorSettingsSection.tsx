@@ -128,7 +128,7 @@ export function AppearanceSettingsSection() {
   };
 
   return (
-    <div className="space-y-8 py-8">
+    <div className="stack-y-8 py-8">
       {/* Theme Section */}
       <section className="pb-2">
         <h2 className="text-xl font-medium mb-3">Theme</h2>
@@ -153,7 +153,7 @@ export function AppearanceSettingsSection() {
 
         {/* Customize Colors */}
         {theme === "system" ? (
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 stack-y-2">
             <ColorsExpandable
               label="Customize light colors"
               mode="light"
@@ -200,7 +200,7 @@ export function AppearanceSettingsSection() {
           )}
         </div>
 
-        <div className="rounded-[10px] border border-border pl-4 py-3 pr-3 space-y-2">
+        <div className="rounded-[10px] border border-border pl-4 py-3 pr-3 stack-y-2">
           {/* Font Family */}
           <div className="flex items-center justify-between">
             <label className="text-sm text-text font-medium">Font</label>
@@ -536,7 +536,7 @@ function ColorsExpandable({
           </Button>
         )}
       </summary>
-      <div className="mt-2 rounded-[10px] border border-border pl-4 py-3 pr-3 space-y-1.5">
+      <div className="mt-2 rounded-[10px] border border-border pl-4 py-3 pr-3 stack-y-1.5">
         {(() => {
           let lastGroup = "";
           return colorLabels.map(({ key, label: colorLabel, group }) => {

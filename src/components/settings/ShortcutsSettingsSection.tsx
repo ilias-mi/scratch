@@ -25,7 +25,7 @@ const settingsCategories = ["Navigation", "Notes", "Editor", "Settings"];
 
 export function ShortcutsSettingsSection() {
   return (
-    <div className="space-y-8 pb-8">
+    <div className="stack-y-8 pb-8">
       {settingsCategories.map((categoryName, idx) => {
         const category = shortcutCategories.find(
           (c) => c.title === categoryName,
@@ -41,7 +41,7 @@ export function ShortcutsSettingsSection() {
               <h2 className="text-xl font-medium pt-8 mb-4">
                 {categoryName}
               </h2>
-              <div className="space-y-3">
+              <div className="stack-y-3">
                 {category.shortcuts.map((shortcut) => (
                   <div
                     key={shortcut.description}

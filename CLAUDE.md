@@ -24,7 +24,10 @@ Runs on every push to `main` and on PRs. Validates frontend build (`tsc` + Vite)
 - Settings live in two places: app config at `{APP_DATA}/config.json`, per-folder settings at `{NOTES_FOLDER}/.scratch/settings.json`.
 - Tauri v2 permissions go in `src-tauri/capabilities/default.json`.
 - The search index buffers edits and commits only before a search (`SearchIndex::commit_pending`, `ReloadPolicy::Manual`). Don't commit per write: it runs on every autosave. The index is rebuilt on startup, so uncommitted edits are never lost.
+- A note's title is its filename (`note_title` in `lib.rs`); content never renames a file. `save_note` writes in place and `rename_note` is the only rename. `NotesContext` runs saves and renames through one write queue so a rename never races a save to the old path.
+- Tabs are per window, in `NotesContext` (`tabs`). The selected note always has a tab: selecting a note that isn't open replaces the active tab, so opening a new tab is explicit (`openNoteInNewTab`, `createNote(true)`). There is one `Editor`; switching tabs is a note switch that restores the saved position. Windows are full app instances (`main` and `note-*`, created by `open_note_window`), sharing backend state; renames are broadcast to other windows via the `note-renamed` event.
 - The file watcher emits every event; the frontend coalesces them with a trailing debounce, so the final write is never dropped.
+- Keep style invalidation narrow, since a full restyle of a long note costs 100ms+ in WebKit: use `stack-y-*` instead of `space-y-*`, and the `in-group-*` / `in-tab-hover` / `in-note-list-focus` variants instead of Tailwind's `group-*` (both defined in `App.css`). Tiptap's injected CSS is off (`injectCSS: false`); its base rules live in `App.css` without the `.ProseMirror-hideselection *` rules. `vite.config.ts` drops the typography plugin's `:first-child`/`:last-child` rules (use `margin-trim`), and don't toggle inherited properties (custom properties, `pointer-events`) on ancestors of the note or the note list.
 
 ## Coding Conventions
 

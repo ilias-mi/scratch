@@ -8,16 +8,35 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Note, NoteMetadata } from "../types/note";
 import * as notesService from "../services/notes";
 import type { SearchResult } from "../services/notes";
+import { renameNotePosition } from "../lib/notePositions";
+
+interface NoteRenamedEvent {
+  from: string;
+  to: string;
+  window: string;
+}
+
+// Puts `id` in place of `anchor`, or right after it; appends when the anchor isn't open
+function placeTab(tabs: string[], anchor: string | null, id: string, replace: boolean): string[] {
+  const index = anchor ? tabs.indexOf(anchor) : -1;
+  if (index < 0) return [...tabs, id];
+  const next = tabs.slice();
+  next.splice(replace ? index : index + 1, replace ? 1 : 0, id);
+  return next;
+}
 
 // Separate contexts to prevent unnecessary re-renders
 // Data context: changes frequently, only subscribed by components that need the data
 interface NotesDataContextValue {
   notes: NoteMetadata[];
   selectedNoteId: string | null;
+  // Open tabs in this window, as note IDs; the selected note is always one of them
+  tabs: string[];
   currentNote: Note | null;
   notesFolder: string | null;
   isLoading: boolean;
@@ -32,9 +51,13 @@ interface NotesDataContextValue {
 // Actions context: stable references, rarely causes re-renders
 interface NotesActionsContextValue {
   selectNote: (id: string) => Promise<void>;
-  createNote: () => Promise<void>;
+  createNote: (inNewTab?: boolean) => Promise<void>;
+  openNoteInNewTab: (id: string) => void;
+  closeTab: (id: string) => void;
   consumePendingNewNote: (id: string) => boolean;
   saveNote: (content: string, noteId?: string) => Promise<void>;
+  renameNote: (id: string, newName: string) => Promise<void>;
+  resolveNoteId: (id: string) => string;
   deleteNote: (id: string) => Promise<void>;
   duplicateNote: (id: string) => Promise<void>;
   refreshNotes: () => Promise<void>;
@@ -56,9 +79,26 @@ interface NotesActionsContextValue {
 const NotesDataContext = createContext<NotesDataContextValue | null>(null);
 const NotesActionsContext = createContext<NotesActionsContextValue | null>(null);
 
-export function NotesProvider({ children }: { children: ReactNode }) {
+export function NotesProvider({
+  children,
+  initialNoteId,
+}: {
+  children: ReactNode;
+  initialNoteId?: string | null;
+}) {
   const [notes, setNotes] = useState<NoteMetadata[]>([]);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  // Selecting a note that isn't open replaces the active tab, so tabs only appear when asked for
+  const [tabs, setTabs] = useState<string[]>([]);
+  const [tabbedNoteId, setTabbedNoteId] = useState<string | null>(null);
+  if (selectedNoteId !== tabbedNoteId) {
+    setTabbedNoteId(selectedNoteId);
+    if (selectedNoteId && !tabs.includes(selectedNoteId)) {
+      setTabs(placeTab(tabs, tabbedNoteId, selectedNoteId, true));
+    }
+  }
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
   const [currentNote, setCurrentNote] = useState<Note | null>(null);
   const [notesFolder, setNotesFolderState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -86,16 +126,47 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const searchRequestIdRef = useRef(0);
   // Tracks the ID of a newly created note so Editor can focus its title.
   const pendingNewNoteIdRef = useRef<string | null>(null);
+  // Saves and renames run one at a time so a rename never races a save to the old path
+  const writeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  // Briefly maps renamed IDs to their new ID so writes queued under the old ID follow the file
+  const renamedIdsRef = useRef<Map<string, string>>(new Map());
+
+  const enqueueWrite = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
+    const result = writeQueueRef.current.then(task);
+    writeQueueRef.current = result.catch(() => {});
+    return result;
+  }, []);
+
+  const resolveNoteId = useCallback((id: string) => {
+    let resolved = id;
+    for (let next = renamedIdsRef.current.get(resolved); next; next = renamedIdsRef.current.get(resolved)) {
+      resolved = next;
+    }
+    return resolved;
+  }, []);
+
+  // Rewrites tab IDs after renames and moves; returning null drops the tab
+  const updateTabs = useCallback((map: (id: string) => string | null) => {
+    setTabs((prev) => {
+      const next = prev.flatMap((id) => map(id) ?? []);
+      return next.length === prev.length && next.every((id, i) => id === prev[i])
+        ? prev
+        : next;
+    });
+  }, []);
 
   const refreshNotes = useCallback(async () => {
     if (!notesFolder) return;
     try {
       const notesList = await notesService.listNotes();
       setNotes(notesList);
+      // Drop tabs of notes that no longer exist (deleted elsewhere)
+      const ids = new Set(notesList.map((note) => note.id));
+      updateTabs((id) => (ids.has(id) || id === selectedNoteIdRef.current ? id : null));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load notes");
     }
-  }, [notesFolder]);
+  }, [notesFolder, updateTabs]);
 
   // Debounced refresh - coalesces rapid saves into a single refresh
   const scheduleRefresh = useCallback(() => {
@@ -126,6 +197,9 @@ export function NotesProvider({ children }: { children: ReactNode }) {
           }),
         );
       }
+      // Wait for queued saves, so switching back to a note just left reads what it saved
+      await writeQueueRef.current;
+      if (requestId !== selectRequestIdRef.current) return;
       const note = await notesService.readNote(id);
       if (requestId !== selectRequestIdRef.current) return;
       setCurrentNote(note);
@@ -134,6 +208,44 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       setError(err instanceof Error ? err.message : "Failed to load note");
     }
   }, []);
+
+  // Closes matching tabs; when the active one closes, its right (else left) neighbor takes over
+  const closeTabs = useCallback(
+    (shouldClose: (id: string) => boolean) => {
+      const current = tabsRef.current;
+      const remaining = current.filter((id) => !shouldClose(id));
+      setTabs(remaining);
+      const selected = selectedNoteIdRef.current;
+      if (!selected || !shouldClose(selected)) return;
+      const index = current.indexOf(selected);
+      const next =
+        current.slice(index + 1).find((id) => !shouldClose(id)) ??
+        current.slice(0, Math.max(index, 0)).reverse().find((id) => !shouldClose(id));
+      if (next) {
+        selectNote(next);
+      } else {
+        selectRequestIdRef.current += 1;
+        setSelectedNoteId(null);
+        setCurrentNote(null);
+      }
+    },
+    [selectNote]
+  );
+
+  const closeTab = useCallback(
+    (id: string) => closeTabs((tabId) => tabId === id),
+    [closeTabs]
+  );
+
+  const openNoteInNewTab = useCallback(
+    (id: string) => {
+      setTabs((prev) =>
+        prev.includes(id) ? prev : placeTab(prev, selectedNoteIdRef.current, id, false)
+      );
+      selectNote(id);
+    },
+    [selectNote]
+  );
 
   const reloadCurrentNote = useCallback(async () => {
     if (!selectedNoteIdRef.current) return;
@@ -147,7 +259,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const createNote = useCallback(async () => {
+  const createNote = useCallback(async (inNewTab = false) => {
     try {
       // Derive target folder from the selected note's parent path
       let targetFolder: string | undefined;
@@ -158,11 +270,15 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         }
       }
       const note = await notesService.createNote(targetFolder);
+      renamedIdsRef.current.delete(note.id);
       selectRequestIdRef.current += 1;
       pendingNewNoteIdRef.current = note.id;
       // Mark as recently saved to ignore file-change events from our own creation
       recentlySavedRef.current.add(note.id);
       await refreshNotes();
+      if (inNewTab) {
+        setTabs((prev) => placeTab(prev, selectedNoteIdRef.current, note.id, false));
+      }
       setCurrentNote(note);
       setSelectedNoteId(note.id);
       // Clear search when creating a new note
@@ -188,49 +304,25 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const saveNote = useCallback(
     async (content: string, noteId?: string) => {
       // Use provided noteId (for flush saves) or fall back to currentNote.id
-      const savingNoteId = noteId || currentNote?.id;
-      if (!savingNoteId) return;
-      let updatedId: string | null = null;
+      const requestedId = noteId || currentNote?.id;
+      if (!requestedId) return;
+      let savingId = requestedId;
 
       try {
-        // Mark this note as recently saved to ignore file-change events from our own save
-        recentlySavedRef.current.add(savingNoteId);
-
-        const updated = await notesService.saveNote(savingNoteId, content);
-        updatedId = updated.id;
-
-        // If the note was renamed (ID changed), also mark the new ID
-        if (updated.id !== savingNoteId) {
-          recentlySavedRef.current.add(updated.id);
-
-          // Transfer pin status to new ID
-          const currentSettings = await notesService.getSettings();
-          const pinnedIds = currentSettings.pinnedNoteIds || [];
-          if (pinnedIds.includes(savingNoteId)) {
-            const updatedSettings = {
-              ...currentSettings,
-              pinnedNoteIds: pinnedIds.map((id) =>
-                id === savingNoteId ? updated.id : id
-              ),
-            };
-            await notesService.updateSettings(updatedSettings);
-          }
-        }
+        const updated = await enqueueWrite(() => {
+          savingId = resolveNoteId(requestedId);
+          // Mark as recently saved to ignore file-change events from our own save
+          recentlySavedRef.current.add(savingId);
+          return notesService.saveNote(savingId, content);
+        });
 
         // Clear external changes flag - if it was set by our own save, we want to ignore it
         setHasExternalChanges(false);
 
-        // Only update state if we're still on the same note we started saving
-        // This prevents race conditions when user switches notes during save
-        setSelectedNoteId((prevId) => {
-          if (prevId === savingNoteId) {
-            // Update to the new ID if the note was renamed
-            setCurrentNote(updated);
-            return updated.id;
-          }
-          // User switched to a different note, don't update current note
-          return prevId;
-        });
+        // Only update state if we're still on the note we saved
+        if (selectedNoteIdRef.current === updated.id) {
+          setCurrentNote(updated);
+        }
 
         // Schedule refresh with debounce - avoids blocking typing during rapid saves
         scheduleRefresh();
@@ -238,17 +330,55 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         // Clear the recently saved flag after a short delay
         // (longer than the file watcher debounce of 500ms)
         setTimeout(() => {
-          recentlySavedRef.current.delete(savingNoteId);
-          if (updatedId) recentlySavedRef.current.delete(updatedId);
+          recentlySavedRef.current.delete(savingId);
         }, 1000);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to save note");
-        // Clean up immediately on error to avoid leaving stale entries
-        recentlySavedRef.current.delete(savingNoteId);
-        if (updatedId) recentlySavedRef.current.delete(updatedId);
+        recentlySavedRef.current.delete(savingId);
       }
     },
-    [currentNote, scheduleRefresh]
+    [currentNote, enqueueWrite, resolveNoteId, scheduleRefresh]
+  );
+
+  const renameNote = useCallback(
+    async (id: string, newName: string) => {
+      try {
+        const renamed = await enqueueWrite(async () => {
+          recentlySavedRef.current.add(id);
+          const note = await notesService.renameNote(id, newName);
+          recentlySavedRef.current.add(note.id);
+          if (note.id !== id) renamedIdsRef.current.set(id, note.id);
+          return note;
+        });
+        if (renamed.id !== id) {
+          renameNotePosition(id, renamed.id);
+          updateTabs((tabId) => (tabId === id ? renamed.id : tabId));
+          void emit("note-renamed", {
+            from: id,
+            to: renamed.id,
+            window: getCurrentWindow().label,
+          } satisfies NoteRenamedEvent);
+        }
+        if (selectedNoteIdRef.current === id) {
+          setSelectedNoteId(renamed.id);
+          setCurrentNote(renamed);
+        }
+        await refreshNotes();
+        setTimeout(() => {
+          recentlySavedRef.current.delete(id);
+          recentlySavedRef.current.delete(renamed.id);
+          // Queued so writes issued under the old ID before this point still resolve
+          void enqueueWrite(async () => {
+            renamedIdsRef.current.delete(id);
+          });
+        }, 1000);
+      } catch (err) {
+        recentlySavedRef.current.delete(id);
+        setError(err instanceof Error ? err.message : "Failed to rename note");
+        throw err;
+      }
+    },
+    [enqueueWrite, refreshNotes, updateTabs]
   );
 
   const deleteNote = useCallback(
@@ -267,20 +397,13 @@ export function NotesProvider({ children }: { children: ReactNode }) {
           await notesService.updateSettings(updatedSettings);
         }
 
-        // Only clear selection if we're deleting the currently selected note
-        setSelectedNoteId((prevId) => {
-          if (prevId === id) {
-            setCurrentNote(null);
-            return null;
-          }
-          return prevId;
-        });
+        closeTab(id);
         await refreshNotes();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to delete note");
       }
     },
-    [refreshNotes]
+    [closeTab, refreshNotes]
   );
 
   const duplicateNote = useCallback(
@@ -347,6 +470,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     async (folderPath: string) => {
       try {
         const note = await notesService.createNote(folderPath);
+        renamedIdsRef.current.delete(note.id);
         selectRequestIdRef.current += 1;
         pendingNewNoteIdRef.current = note.id;
         recentlySavedRef.current.add(note.id);
@@ -386,14 +510,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     async (path: string) => {
       try {
         await notesService.deleteFolder(path);
-        // If the selected note was inside the deleted folder, clear selection
-        setSelectedNoteId((prevId) => {
-          if (prevId && prevId.startsWith(path + "/")) {
-            setCurrentNote(null);
-            return null;
-          }
-          return prevId;
-        });
+        closeTabs((id) => id.startsWith(path + "/"));
         await refreshNotes();
       } catch (err) {
         setError(
@@ -401,7 +518,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         );
       }
     },
-    [refreshNotes]
+    [closeTabs, refreshNotes]
   );
 
   const renameFolderAction = useCallback(
@@ -418,6 +535,9 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         const oldPrefix = oldPath + "/";
         const newPrefix = newPath + "/";
 
+        updateTabs((id) =>
+          id.startsWith(oldPrefix) ? newPrefix + id.substring(oldPrefix.length) : id
+        );
         // Update selectedNoteId if it was inside the renamed folder
         setSelectedNoteId((prevId) => {
           if (prevId && prevId.startsWith(oldPrefix)) {
@@ -439,13 +559,15 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         );
       }
     },
-    [refreshNotes]
+    [refreshNotes, updateTabs]
   );
 
   const moveNoteAction = useCallback(
     async (id: string, targetFolder: string) => {
       try {
         const newId = await notesService.moveNote(id, targetFolder);
+        renameNotePosition(id, newId);
+        updateTabs((tabId) => (tabId === id ? newId : tabId));
         // Update selection if we moved the selected note
         setSelectedNoteId((prevId) => {
           if (prevId === id) {
@@ -463,7 +585,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         setError(err instanceof Error ? err.message : "Failed to move note");
       }
     },
-    [refreshNotes]
+    [refreshNotes, updateTabs]
   );
 
   const moveFolderAction = useCallback(
@@ -481,6 +603,9 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         const oldPrefix = path + "/";
         const newPrefix = newPath + "/";
 
+        updateTabs((id) =>
+          id.startsWith(oldPrefix) ? newPrefix + id.substring(oldPrefix.length) : id
+        );
         // Update selectedNoteId if it was inside the moved folder
         setSelectedNoteId((prevId) => {
           if (prevId && prevId.startsWith(oldPrefix)) {
@@ -500,7 +625,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         setError(err instanceof Error ? err.message : "Failed to move folder");
       }
     },
-    [refreshNotes]
+    [refreshNotes, updateTabs]
   );
 
   const setNotesFolder = useCallback(async (path: string) => {
@@ -521,6 +646,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const syncNotesFolder = useCallback(async (path: string) => {
     try {
       setNotesFolderState(path);
+      setTabs([]);
       setSelectedNoteId(null);
       setCurrentNote(null);
       const notesList = await notesService.listNotes();
@@ -606,6 +732,8 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         if (folder) {
           const notesList = await notesService.listNotes();
           setNotes(notesList);
+          // Windows opened for a specific note start on it
+          if (initialNoteId) selectNote(initialNoteId);
           // Start file watcher
           await notesService.startFileWatcher();
         }
@@ -616,7 +744,35 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       }
     }
     init();
-  }, []);
+  }, [initialNoteId, selectNote]);
+
+  // Follow renames made in other windows, so tabs and pending saves move with the file
+  useEffect(() => {
+    const ownWindow = getCurrentWindow().label;
+    const unlisten = listen<NoteRenamedEvent>("note-renamed", ({ payload }) => {
+      const { from, to, window } = payload;
+      if (window === ownWindow) return;
+      renamedIdsRef.current.set(from, to);
+      setTimeout(() => {
+        void enqueueWrite(async () => {
+          renamedIdsRef.current.delete(from);
+        });
+      }, 1000);
+      updateTabs((id) => (id === from ? to : id));
+      if (selectedNoteIdRef.current === from) {
+        setSelectedNoteId(to);
+        notesService
+          .readNote(to)
+          .then((note) => {
+            if (selectedNoteIdRef.current === to) setCurrentNote(note);
+          })
+          .catch(() => {});
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [enqueueWrite, updateTabs]);
 
   // Listen for file change events and notify if current note changed externally
   useEffect(() => {
@@ -693,6 +849,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     () => ({
       notes,
       selectedNoteId,
+      tabs,
       currentNote,
       notesFolder,
       isLoading,
@@ -706,6 +863,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     [
       notes,
       selectedNoteId,
+      tabs,
       currentNote,
       notesFolder,
       isLoading,
@@ -723,8 +881,12 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     () => ({
       selectNote,
       createNote,
+      openNoteInNewTab,
+      closeTab,
       consumePendingNewNote,
       saveNote,
+      renameNote,
+      resolveNoteId,
       deleteNote,
       duplicateNote,
       refreshNotes,
@@ -745,8 +907,12 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     [
       selectNote,
       createNote,
+      openNoteInNewTab,
+      closeTab,
       consumePendingNewNote,
       saveNote,
+      renameNote,
+      resolveNoteId,
       deleteNote,
       duplicateNote,
       refreshNotes,

@@ -37,7 +37,7 @@ export function AboutSettingsSection() {
   };
 
   return (
-    <div className="space-y-8 py-8">
+    <div className="stack-y-8 py-8">
       {/* Version */}
       <section className="pb-2">
         <h2 className="text-xl font-medium mb-0.5">Version</h2>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { toast } from "sonner";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
@@ -26,12 +26,15 @@ import {
 import { mod, shift, isMac, isWindows } from "../../lib/platform";
 import * as notesService from "../../services/notes";
 import { FolderNameDialog } from "../notes/FolderNameDialog";
+import { RenameNoteDialog } from "../notes/RenameNoteDialog";
+import { SIDEBAR_DEFAULT_PX } from "../../lib/sidebar";
 
 interface SidebarProps {
   onOpenSettings?: () => void;
 }
 
-export function Sidebar({ onOpenSettings }: SidebarProps) {
+// Memoized: toggling the sidebar re-renders App, and the note list needn't re-render with it
+export const Sidebar = memo(function Sidebar({ onOpenSettings }: SidebarProps) {
   const {
     createNote,
     createFolder,
@@ -310,7 +313,11 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
       onDragEnd={handleDragEnd}
       onDragCancel={() => setDragLabel(null)}
     >
-    <div className="relative w-full h-full bg-bg-secondary border-r border-border flex flex-col select-none">
+    {/* Fixed at the sidebar width, so the show/hide animation clips the list instead of re-wrapping it */}
+    <div
+      className="relative shrink-0 h-full bg-bg-secondary border-r border-border flex flex-col select-none"
+      style={{ width: `var(--sidebar-width, ${SIDEBAR_DEFAULT_PX}px)` }}
+    >
       {/* Drag region */}
       {!isWindows && <div className="h-11 shrink-0" data-tauri-drag-region></div>}
       <div className={`flex items-center justify-between pl-4 pr-3 pb-2 border-b border-border shrink-0${isWindows ? " pt-2" : ""}`}>
@@ -432,6 +439,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
         description="Enter a name for your new folder"
         confirmLabel="Create"
       />
+      <RenameNoteDialog />
     </div>
 
     {/* Drag overlay — floating label while dragging */}
@@ -450,4 +458,4 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
     </DragOverlay>
     </DndContext>
   );
-}
+});

@@ -5,9 +5,27 @@ import tailwindcss from "@tailwindcss/vite";
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
+// The typography plugin wraps its :first-child / :last-child / :first-of-type rules in :where(),
+// which WebKit can't pre-filter by ancestor, so it tests them on every element of the note. Removing
+// an element that once had focus (closing a popup, menu or dialog) then restyles the whole note.
+// App.css overrides what these rules do and restates the blockquote quotes in a filterable form.
+const STRUCTURAL_IN_WHERE = /:where\([^)]*:(first|last)-(child|of-type)/;
+const dropProseStructuralRules = {
+  postcssPlugin: "drop-prose-structural-rules",
+  Rule(rule: { selector: string; remove: () => void }) {
+    if (rule.selector.includes(".prose") && STRUCTURAL_IN_WHERE.test(rule.selector)) {
+      rule.remove();
+    }
+  },
+};
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
+
+  css: {
+    postcss: { plugins: [dropProseStructuralRules] },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

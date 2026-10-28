@@ -1,7 +1,7 @@
 import { useCallback, useMemo, memo, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { useNotes } from "../../context/NotesContext";
+import { useNotes, useNotesActions } from "../../context/NotesContext";
 import {
   ListItem,
   AlertDialog,
@@ -13,10 +13,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui";
-import { cleanTitle } from "../../lib/utils";
 import * as notesService from "../../services/notes";
 import { FolderTreeView } from "./FolderTreeView";
+import { requestRenameNote } from "./RenameNoteDialog";
+import { OpenNoteMenuItems } from "./OpenNoteMenuItems";
 import {
+  PencilIcon,
   PinIcon,
   CopyIcon,
   TrashIcon,
@@ -112,7 +114,7 @@ export const NoteItem = memo(function NoteItem({
       style={depth != null ? { paddingLeft: `${depth * 12}px` } : undefined}
     >
       <ListItem
-        title={cleanTitle(title)}
+        title={title}
         subtitle={displayPreview}
         meta={formatDate(modified)}
         isSelected={isSelected}
@@ -162,6 +164,14 @@ const NoteItemWithMenu = memo(function NoteItemWithMenu({
     }
   }, [id, isPinned, onPin, onUnpin, onRefreshSettings]);
 
+  const { openNoteInNewTab } = useNotesActions();
+  const handleAuxClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button === 1) openNoteInNewTab(id);
+    },
+    [id, openNoteInNewTab],
+  );
+
   const handleCopyFilepath = useCallback(async () => {
     try {
       const folder = await notesService.getNotesFolder();
@@ -177,7 +187,7 @@ const NoteItemWithMenu = memo(function NoteItemWithMenu({
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
-        <div>
+        <div onAuxClick={handleAuxClick}>
           <NoteItem
             id={id}
             title={title}
@@ -191,9 +201,18 @@ const NoteItemWithMenu = memo(function NoteItemWithMenu({
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Content className="min-w-44 bg-bg border border-border rounded-md shadow-lg py-1 z-50">
+          <OpenNoteMenuItems id={id} itemClassName={menuItemClass} />
+          <ContextMenu.Separator className={menuSeparatorClass} />
           <ContextMenu.Item className={menuItemClass} onSelect={handlePin}>
             <PinIcon className="w-4 h-4 stroke-[1.6]" />
             {isPinned ? "Unpin" : "Pin"}
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            className={menuItemClass}
+            onSelect={() => requestRenameNote(id)}
+          >
+            <PencilIcon className="w-4 h-4 stroke-[1.6]" />
+            Rename
           </ContextMenu.Item>
           <ContextMenu.Item
             className={menuItemClass}

@@ -150,7 +150,7 @@ export function ToolsSettingsSection() {
   };
 
   return (
-    <div className="space-y-8 py-8">
+    <div className="stack-y-8 py-8">
       {/* AI Providers */}
       <section className="pb-2">
         <h2 className="text-xl font-medium mb-0.5">AI Providers</h2>
@@ -167,7 +167,7 @@ export function ToolsSettingsSection() {
             </span>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="stack-y-2">
             {AI_PROVIDER_ORDER.map((provider) => {
               const installed = aiProviders.includes(provider);
               const info = AI_PROVIDER_INFO[provider];
@@ -231,7 +231,7 @@ export function ToolsSettingsSection() {
               </div>
             ) : cli.status.installed ? (
               <>
-                <div className="rounded-[10px] border border-border p-4 space-y-3 mb-2.5">
+                <div className="rounded-[10px] border border-border p-4 stack-y-3 mb-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-text font-medium">
                       Status

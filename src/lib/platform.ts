@@ -15,6 +15,7 @@ export const isWindows =
 export const mod = isMac ? "⌘" : "Ctrl";
 export const alt = isMac ? "⌥" : "Alt";
 export const shift = isMac ? "⇧" : "Shift";
+export const ctrl = isMac ? "⌃" : "Ctrl";
 
 /**
  * Build a shortcut label string.

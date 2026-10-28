@@ -14,6 +14,9 @@
 > - **Inline math** - Type `$x^2$` to render inline KaTeX math; click it to edit. Follows the Pandoc rule (no space just inside the `$` signs, no digit right after the closing one), so prices like `$5 and $10` stay plain text
 > - **Highlights** - Highlight text in yellow, green, blue, pink, or gray from the toolbar (`Cmd+Shift+H` for yellow). Yellow is saved as `==text==`, other colors as `<mark data-color="...">`
 > - **Live reload of external edits** - When the open note changes on disk (e.g. edited by another app or an AI agent), it reloads automatically, keeping the cursor position. If you have unsaved edits, the Refresh button appears instead
+> - **Filenames independent of content** - A note's filename is its title and no longer follows its first line. Rename a note from its right-click menu in the sidebar, or scroll up once more while at the top of a note to reveal the filename field above it (it stays until you scroll down). New notes open with the filename field focused
+> - **Remembered positions** - Switching back to a note restores its scroll position and cursor. Positions are kept for 12 hours after you last left a note
+> - **Tabs and windows** - Open a note in a new tab or window from its right-click menu (middle-click also opens a new tab). Clicking a note in the sidebar still replaces the current note, so the tab bar only shows up in the title bar once two or more tabs are open. `Cmd+T` new tab, `Cmd+W` closes the tab (or the window on the last one), `Ctrl+Tab` / `Ctrl+Shift+Tab` switch tabs, `Cmd+Shift+N` new window. Each tab returns to where you left it, and renames carry over to other windows
 > - **Lower energy use** - The search index no longer writes to disk on every autosave or polls in the background, refreshing the note list only re-reads changed files, and typing no longer re-renders the whole editor
 
 <img src="docs/app-icon.png" alt="Scratch" width="128" height="128" style="border-radius: 22px; margin-bottom: 8px;">

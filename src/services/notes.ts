@@ -17,8 +17,16 @@ export async function readNote(id: string): Promise<Note> {
   return invoke("read_note", { id });
 }
 
-export async function saveNote(id: string | null, content: string): Promise<Note> {
+export async function saveNote(id: string, content: string): Promise<Note> {
   return invoke("save_note", { id, content });
+}
+
+export async function renameNote(id: string, newName: string): Promise<Note> {
+  return invoke("rename_note", { id, newName });
+}
+
+export async function openNoteWindow(noteId?: string): Promise<void> {
+  return invoke("open_note_window", { noteId: noteId ?? null });
 }
 
 export async function deleteNote(id: string): Promise<void> {
@@ -59,9 +67,8 @@ export async function duplicateNote(id: string): Promise<Note> {
   const lastSlash = id.lastIndexOf("/");
   const folder = lastSlash > 0 ? id.substring(0, lastSlash) : undefined;
   const newNote = await createNote(folder);
-  // Save with the original content (title will be extracted from content)
-  const duplicatedContent = original.content.replace(/^# (.+)$/m, (_, title) => `# ${title} (Copy)`);
-  return saveNote(newNote.id, duplicatedContent || original.content);
+  await saveNote(newNote.id, original.content);
+  return renameNote(newNote.id, `${original.title} (Copy)`);
 }
 
 export async function getSettings(): Promise<Settings> {

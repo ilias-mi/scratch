@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, useEffect, useRef, memo } from "react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { useDroppable, useDraggable } from "@dnd-kit/core";
-import { useNotes } from "../../context/NotesContext";
+import { useNotes, useNotesActions } from "../../context/NotesContext";
 import {
   buildFolderTree,
   countNotesInFolder,
@@ -9,7 +9,8 @@ import {
   type TreeItem,
 } from "../../lib/folderTree";
 import { FolderNameDialog } from "./FolderNameDialog";
-import { cleanTitle } from "../../lib/utils";
+import { requestRenameNote } from "./RenameNoteDialog";
+import { OpenNoteMenuItems } from "./OpenNoteMenuItems";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -96,6 +97,14 @@ const FileItem = memo(function FileItem({
     (e: React.MouseEvent) => onNoteClick(note.id, e),
     [onNoteClick, note.id],
   );
+  // Middle-click opens the note in a new tab
+  const { openNoteInNewTab } = useNotesActions();
+  const handleAuxClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button === 1) openNoteInNewTab(note.id);
+    },
+    [openNoteInNewTab, note.id],
+  );
 
   // The parent folder for this note (empty string = root)
   const noteParentFolder = useMemo(() => {
@@ -162,13 +171,14 @@ const FileItem = memo(function FileItem({
                 ? "bg-accent/10 ring-1 ring-accent"
                 : isSelected &&
                     (!focusedItemKey || focusedItemKey === `note:${note.id}`)
-                  ? "bg-bg-muted group-focus/notelist:ring-1 group-focus/notelist:ring-text-muted"
+                  ? "bg-bg-muted in-note-list-focus:ring-1 in-note-list-focus:ring-text-muted"
                   : isMultiSelected
                     ? "bg-bg-muted"
                     : "hover:bg-bg-muted"
           }`}
           style={{ paddingLeft: `${depth * 12 + 8}px`, paddingRight: "8px" }}
           onClick={handleClick}
+          onAuxClick={handleAuxClick}
           role="button"
           tabIndex={-1}
         >
@@ -178,15 +188,24 @@ const FileItem = memo(function FileItem({
             <NoteIcon className="w-4 h-4 stroke-[1.6] opacity-50 shrink-0" />
           )}
           <span className="text-sm text-text truncate">
-            {cleanTitle(note.title)}
+            {note.title}
           </span>
         </div>
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Content className="min-w-44 bg-bg border border-border rounded-md shadow-lg py-1 z-50">
+          <OpenNoteMenuItems id={note.id} itemClassName={menuItemClass} />
+          <ContextMenu.Separator className={menuSeparatorClass} />
           <ContextMenu.Item className={menuItemClass} onSelect={handlePin}>
             <PinIcon className="w-4 h-4 stroke-[1.6]" />
             {isPinned ? "Unpin" : "Pin"}
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            className={menuItemClass}
+            onSelect={() => requestRenameNote(note.id)}
+          >
+            <PencilIcon className="w-4 h-4 stroke-[1.6]" />
+            Rename
           </ContextMenu.Item>
           <ContextMenu.Item
             className={menuItemClass}

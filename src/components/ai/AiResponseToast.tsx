@@ -25,8 +25,8 @@ function parseMarkdown(text: string): React.ReactNode {
           key={`list-${index}`}
           className={
             listType === "ol"
-              ? "list-decimal list-inside space-y-0.5 my-1"
-              : "list-disc list-inside space-y-0.5 my-1"
+              ? "list-decimal list-inside stack-y-0.5 my-1"
+              : "list-disc list-inside stack-y-0.5 my-1"
           }
         >
           {listItems.map((item, i) => (
@@ -229,7 +229,7 @@ export function AiResponseToast({ output, provider }: AiResponseToastProps) {
   return (
     <div className="flex gap-3 items-start">
       <Icon className="w-4.5 h-4.5 shrink-0 mt-px" />
-      <div className="flex-1 space-y-2 min-w-0">
+      <div className="flex-1 stack-y-2 min-w-0">
         <div className="font-medium text-sm">AI Edit Complete</div>
         <div className="text-text-muted max-h-60 overflow-y-auto pr-2">
           {parseMarkdown(output)}

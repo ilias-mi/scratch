@@ -210,7 +210,7 @@ export function EditorWidthHandles({ containerRef }: EditorWidthHandlesProps) {
         <div
           className={cn(
             "absolute left-1/2 -translate-x-1/2 top-0 h-full w-0.75 rounded-full bg-border transition-opacity duration-150",
-            isDragging ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            isDragging ? "opacity-100" : "opacity-0 in-group-hover:opacity-100",
           )}
         />
       </div>
@@ -234,7 +234,7 @@ export function EditorWidthHandles({ containerRef }: EditorWidthHandlesProps) {
         <div
           className={cn(
             "absolute left-1/2 -translate-x-1/2 top-0 h-full w-0.75 rounded-full bg-border transition-opacity duration-150",
-            isDragging ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            isDragging ? "opacity-100" : "opacity-0 in-group-hover:opacity-100",
           )}
         />
       </div>
