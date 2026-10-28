@@ -18,6 +18,8 @@
 > - **Remembered positions** - Switching back to a note restores its scroll position and cursor. Positions are kept for 12 hours after you last left a note
 > - **Tabs and windows** - Open a note in a new tab or window from its right-click menu (middle-click also opens a new tab). Clicking a note in the sidebar still replaces the current note, so the tab bar only shows up in the title bar once two or more tabs are open. `Cmd+T` new tab, `Cmd+W` closes the tab (or the window on the last one), `Ctrl+Tab` / `Ctrl+Shift+Tab` switch tabs, `Cmd+Shift+N` new window. Each tab returns to where you left it, and renames carry over to other windows
 > - **Lower energy use** - The search index no longer writes to disk on every autosave or polls in the background, refreshing the note list only re-reads changed files, and typing no longer re-renders the whole editor
+> - **Responsive with large notes** - Toolbar actions, math popups, menus, tooltips and the sidebar animation no longer stall when a long note is open, and switching back to a recently opened note skips re-parsing it
+> - **Quieter toolbar** - The heading and list buttons are gone from the toolbar (use `Cmd+Alt+1`–`4`, `Cmd+Shift+7` / `8` or the `/` menu), and toolbar tooltips only appear after hovering for 2 seconds
 
 <img src="docs/app-icon.png" alt="Scratch" width="128" height="128" style="border-radius: 22px; margin-bottom: 8px;">
 
