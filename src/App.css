@@ -34,6 +34,7 @@
   --callout-exam: #e11d48;
   --callout-warning: #d97706;
   --callout-caution: #dc2626;
+  --callout-plain: #78716c;
 
   /* Editor font settings - simplified (overridden by ThemeContext) */
   --editor-font-family:
@@ -97,6 +98,7 @@
   --callout-exam: #fb7185;
   --callout-warning: #fbbf24;
   --callout-caution: #f87171;
+  --callout-plain: #a8a29e;
 
   /* Syntax highlighting colors - Dark (GitHub) */
   --color-syntax-keyword: #ea4a5a;
@@ -635,6 +637,18 @@ html.dark {
   margin: 0;
 }
 
+.prose .inline-math-error {
+  color: #dc2626;
+  font-family: var(--font-mono);
+}
+
+.prose
+  .tiptap-mathematics-render[data-type="inline-math"].ProseMirror-selectednode {
+  outline: 2px solid var(--color-bg-emphasis);
+  outline-offset: 1px;
+  border-radius: 0.125rem;
+}
+
 .prose .block-math-error {
   color: #dc2626;
   font-family: var(--font-mono);
@@ -722,6 +736,7 @@ html.dark {
 [data-callout="exam"] { --callout-color: var(--callout-exam); }
 [data-callout="warning"] { --callout-color: var(--callout-warning); }
 [data-callout="caution"] { --callout-color: var(--callout-caution); }
+[data-callout="plain"] { --callout-color: var(--callout-plain); }
 
 .prose .callout {
   position: relative;
@@ -739,6 +754,9 @@ html.dark {
   font-weight: 600;
   color: var(--callout-color);
   user-select: none;
+}
+.prose .callout[data-callout="plain"]::before {
+  content: none;
 }
 .prose .callout > :first-child {
   margin-top: 0;

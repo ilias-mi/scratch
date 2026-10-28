@@ -83,7 +83,11 @@ import {
 import { Wikilink, type WikilinkStorage } from "./Wikilink";
 import { WikilinkSuggestion } from "./WikilinkSuggestion";
 import { EditorWidthHandles } from "./EditorWidthHandle";
-import { ScratchBlockMath, normalizeBlockMath } from "./MathExtensions";
+import {
+  ScratchBlockMath,
+  ScratchInlineMath,
+  normalizeBlockMath,
+} from "./MathExtensions";
 import { cn } from "../../lib/utils";
 import { plainTextFromMarkdown } from "../../lib/plainText";
 import { Button, IconButton, ToolbarButton, Tooltip } from "../ui";
@@ -270,7 +274,7 @@ function HighlightMenu({ editor, isActive }: HighlightMenuProps) {
   const [open, setOpen] = useState(false);
 
   return (
-    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+    <DropdownMenu.Root open={open} onOpenChange={setOpen} modal={false}>
       <Tooltip content={`Highlight (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}H)`}>
         <DropdownMenu.Trigger asChild>
           <ToolbarButton isActive={isActive}>
@@ -320,7 +324,7 @@ function CalloutMenu({ editor, isActive }: CalloutMenuProps) {
   const [open, setOpen] = useState(false);
 
   return (
-    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+    <DropdownMenu.Root open={open} onOpenChange={setOpen} modal={false}>
       <Tooltip content="Callout">
         <DropdownMenu.Trigger asChild>
           <ToolbarButton isActive={isActive}>
@@ -541,7 +545,11 @@ const FormatBar = memo(function FormatBar({
       <ToolbarButton onClick={onAddImage} isActive={false} title="Add Image">
         <ImageIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
-      <DropdownMenu.Root open={tableMenuOpen} onOpenChange={setTableMenuOpen}>
+      <DropdownMenu.Root
+        open={tableMenuOpen}
+        onOpenChange={setTableMenuOpen}
+        modal={false}
+      >
         <Tooltip content="Insert Table">
           <DropdownMenu.Trigger asChild>
             <ToolbarButton isActive={active.table}>
@@ -935,7 +943,7 @@ export function Editor({
     }
   }, []);
 
-  const handleEditBlockMath = useCallback(
+  const handleEditMath = useCallback(
     (pos: number) => {
       const currentEditor = editorRef.current;
       if (!currentEditor) return;
@@ -947,9 +955,13 @@ export function Editor({
       closeBlockMathPopup();
 
       const node = currentEditor.state.doc.nodeAt(pos);
-      if (!node || node.type.name !== "blockMath") {
+      if (
+        !node ||
+        (node.type.name !== "blockMath" && node.type.name !== "inlineMath")
+      ) {
         return;
       }
+      const isInline = node.type.name === "inlineMath";
 
       const virtualElement = {
         getBoundingClientRect: () => {
@@ -988,10 +1000,11 @@ export function Editor({
               toast.error("Please enter a formula.");
               return;
             }
-            currentEditor
-              .chain()
-              .focus()
-              .updateBlockMath({ pos, latex: trimmed })
+            const chain = currentEditor.chain().focus();
+            (isInline
+              ? chain.updateInlineMath({ pos, latex: trimmed })
+              : chain.updateBlockMath({ pos, latex: trimmed })
+            )
               .setTextSelection(pos + node.nodeSize)
               .run();
             closeBlockMathPopup();
@@ -1044,7 +1057,7 @@ export function Editor({
       selection instanceof NodeSelection &&
       selection.node.type.name === "blockMath"
     ) {
-      handleEditBlockMath(from);
+      handleEditMath(from);
       return;
     }
 
@@ -1054,7 +1067,7 @@ export function Editor({
         selectedNode?.type.name === "blockMath" &&
         from + selectedNode.nodeSize === to
       ) {
-        handleEditBlockMath(from);
+        handleEditMath(from);
         return;
       }
     }
@@ -1062,12 +1075,12 @@ export function Editor({
     if (empty) {
       const nodeBefore = $from.nodeBefore;
       if (nodeBefore?.type.name === "blockMath") {
-        handleEditBlockMath(from - nodeBefore.nodeSize);
+        handleEditMath(from - nodeBefore.nodeSize);
         return;
       }
       const nodeAfter = $from.nodeAfter;
       if (nodeAfter?.type.name === "blockMath") {
-        handleEditBlockMath(from);
+        handleEditMath(from);
         return;
       }
     }
@@ -1190,7 +1203,7 @@ export function Editor({
         component.destroy();
       },
     });
-  }, [closeBlockMathPopup, handleEditBlockMath]);
+  }, [closeBlockMathPopup, handleEditMath]);
 
   const editor = useEditor({
     textDirection,
@@ -1275,7 +1288,17 @@ export function Editor({
           macros: katexMacros,
         },
         onClick: (_node, pos) => {
-          handleEditBlockMath(pos);
+          handleEditMath(pos);
+        },
+      }),
+      ScratchInlineMath.configure({
+        katexOptions: {
+          throwOnError: false,
+          displayMode: false,
+          macros: katexMacros,
+        },
+        onClick: (_node, pos) => {
+          handleEditMath(pos);
         },
       }),
     ],
@@ -2505,7 +2528,11 @@ export function Editor({
               </IconButton>
             </Tooltip>
           )}
-          <DropdownMenu.Root open={copyMenuOpen} onOpenChange={setCopyMenuOpen}>
+          <DropdownMenu.Root
+            open={copyMenuOpen}
+            onOpenChange={setCopyMenuOpen}
+            modal={false}
+          >
             <Tooltip
               content={`Export (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}C)`}
             >

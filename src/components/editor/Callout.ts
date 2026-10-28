@@ -18,6 +18,7 @@ export const CALLOUT_LABELS = {
   exam: "Exam",
   warning: "Warning",
   caution: "Caution",
+  plain: "Plain",
 } as const;
 
 export type CalloutType = keyof typeof CALLOUT_LABELS;

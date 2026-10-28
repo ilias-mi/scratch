@@ -1,5 +1,5 @@
 import { InputRule } from "@tiptap/core";
-import { BlockMath } from "@tiptap/extension-mathematics";
+import { BlockMath, InlineMath } from "@tiptap/extension-mathematics";
 import { Plugin, PluginKey, NodeSelection } from "@tiptap/pm/state";
 
 export function normalizeBlockMath(value: string): string {
@@ -64,6 +64,44 @@ export const ScratchBlockMath = BlockMath.extend({
             }
             return false;
           },
+        },
+      }),
+    ];
+  },
+});
+
+// Pandoc-style inline math: the opening $ is followed by a non-space, the
+// closing $ is preceded by a non-space and not followed by a digit or $,
+// so prices like "$5 and $10" stay plain text. Backticks are excluded so math
+// never spans into inline code
+const INLINE_MATH_BODY = String.raw`((?:\\.|[^\s$\\\`])(?:(?:\\.|[^\\$\`\n])*?(?:\\.|[^\s$\\\`]))?)`;
+const INLINE_MATH_TOKEN = new RegExp(String.raw`^\$${INLINE_MATH_BODY}\$(?![\d$])`);
+const INLINE_MATH_INPUT = new RegExp(String.raw`(?:^|[^$\\])(\$${INLINE_MATH_BODY}\$)$`);
+
+export const ScratchInlineMath = InlineMath.extend({
+  markdownTokenizer: {
+    name: "inlineMath",
+    level: "inline" as const,
+    start: (src: string) => src.indexOf("$"),
+    tokenize: (src: string) => {
+      const match = src.match(INLINE_MATH_TOKEN);
+      if (!match) return undefined;
+      return { type: "inlineMath", raw: match[0], latex: match[1] };
+    },
+  },
+
+  // Typing the closing $ of $x$ renders it
+  addInputRules() {
+    return [
+      new InputRule({
+        find: INLINE_MATH_INPUT,
+        handler: ({ state, range, match }) => {
+          const from = range.to - match[1].length;
+          state.tr.replaceWith(
+            from,
+            range.to,
+            this.type.create({ latex: match[2] }),
+          );
         },
       }),
     ];
