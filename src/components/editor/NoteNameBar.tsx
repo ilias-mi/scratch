@@ -47,9 +47,9 @@ export const NoteNameBar = memo(
         ref={ref}
         inert={!visible}
         className={cn(
-          "absolute inset-x-0 top-0 z-20 border-b border-border bg-bg/85 backdrop-blur-sm transition-[transform,opacity,visibility] duration-200 ease-out",
-          // Hidden fully once it slides out, so its backdrop blur isn't composited while scrolling
-          visible ? "visible translate-y-0 opacity-100" : "invisible -translate-y-full opacity-0",
+          // Opaque and without a fade, so it slides over the section path instead of ghosting on it
+          "absolute inset-x-0 top-0 z-20 border-b border-border bg-bg transition-[transform,visibility] duration-200 ease-out",
+          visible ? "visible translate-y-0" : "invisible -translate-y-full",
         )}
       >
         <div className="flex items-center px-4 h-6 text-xs">

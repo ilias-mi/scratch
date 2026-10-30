@@ -2798,8 +2798,10 @@ export function Editor({
         />
       </div>
 
-      {/* Section path sits above the content; the filename bar slides over it */}
-      <div className="relative z-20">
+      {/* Section path sits above the content; the filename bar slides over it. The clip stops that
+          slide at the top edge (it would otherwise pass over the format bar) but leaves the
+          bottom open for the headings dropdown. */}
+      <div className="relative z-20 [clip-path:inset(0_-1rem_-100vh_-1rem)]">
         {editor && !sourceMode && !focusMode && !previewMode && (
           <SectionPath
             editor={editor}

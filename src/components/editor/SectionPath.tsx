@@ -28,7 +28,7 @@ const COLLAPSE_EASING = "cubic-bezier(0.4, 0, 1, 1)";
 interface SectionPathProps {
   editor: TiptapEditor;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
-  /** Keeps the path mounted but out of sight, e.g. while the filename bar covers it. */
+  /** The filename bar covers the path: it closes the dropdown and stops taking input. */
   hidden: boolean;
 }
 
@@ -89,7 +89,7 @@ export const SectionPath = memo(function SectionPath({
     <div
       ref={rootRef}
       inert={hidden}
-      className={cn("relative z-10 h-6 border-b border-border", hidden && "invisible")}
+      className="relative z-10 h-6 border-b border-border"
     >
       <div className="flex h-full items-center px-4 text-xs text-text-muted">
         <button
