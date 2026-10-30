@@ -38,6 +38,7 @@ A minimalist, offline-first markdown note-taking app for macOS, Windows, and Lin
 - **Mermaid diagrams** - Render flowcharts, sequence diagrams, and more in fenced code blocks
 - **KaTeX math** - Inline `$...$` and block `$$...$$` math, edited in a popup with live preview (type `$` for inline math)
 - **Callouts and highlights** - Colored GitHub-style callouts and multi-color text highlights
+- **Resizable table columns** - Drag a column edge to set its width, saved in the note as a hidden comment
 - **Wikilinks** - Type `[[` to link between notes with autocomplete
 - **Slash commands** - Type `/` to quickly insert headings, lists, code blocks, diagrams, and more
 - **Focus mode** - Distraction-free writing with animated sidebar/toolbar fade (`Cmd+Shift+Enter`)
@@ -48,6 +49,7 @@ A minimalist, offline-first markdown note-taking app for macOS, Windows, and Lin
 - **Remembered positions** - Each note reopens at the scroll position and cursor where you left it, for 12 hours after you last left it
 - **Filenames you control** - A note's filename is its title and never changes with its content; rename from the sidebar or the filename bar above the note
 - **Section path** - A breadcrumb of the current heading above the note with a reading progress line, expandable to the full heading tree
+- **Line numbers** - Optional, unobtrusive line numbers in the editor and in markdown source, plus a current line counter in the top bar
 - **Keyboard optimized** - Lots of shortcuts and a command palette
 - **Customizable** - Theme, typography, page width, and RTL text direction
 - **Git integration** - Optional version control with push/pull for multi-device sync

@@ -15,6 +15,7 @@ import type {
   FontFamily,
   TextDirection,
   EditorWidth,
+  LineNumbers,
   CustomColors,
   ThemeColorKey,
 } from "../types/note";
@@ -106,6 +107,8 @@ interface ThemeContextType {
   reloadSettings: () => Promise<void>;
   textDirection: TextDirection;
   setTextDirection: (dir: TextDirection) => void;
+  lineNumbers: LineNumbers;
+  setLineNumbers: (level: LineNumbers) => void;
   editorWidth: EditorWidth;
   setEditorWidth: (width: EditorWidth) => void;
   interfaceZoom: number;
@@ -176,6 +179,10 @@ function applyLayoutCSSVariables(
   }
 }
 
+function isLineNumbers(value: unknown): value is LineNumbers {
+  return value === "off" || value === "faint" || value === "subtle";
+}
+
 function isTextDirection(value: unknown): value is TextDirection {
   return value === "auto" || value === "ltr" || value === "rtl";
 }
@@ -186,6 +193,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     Required<EditorFontSettings>
   >(defaultEditorFontSettings);
   const [textDirection, setTextDirectionState] = useState<TextDirection>("auto");
+  const [lineNumbers, setLineNumbersState] = useState<LineNumbers>("off");
   const [editorWidth, setEditorWidthState] = useState<EditorWidth>("normal");
   const [interfaceZoom, setInterfaceZoomState] = useState(1.0);
   const [customEditorWidthPx, setCustomEditorWidthPxState] = useState<number>(
@@ -224,6 +232,9 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       }
       if (isTextDirection(settings.textDirection)) {
         setTextDirectionState(settings.textDirection);
+      }
+      if (isLineNumbers(settings.lineNumbers)) {
+        setLineNumbersState(settings.lineNumbers);
       }
       if (
         settings.editorWidth === "narrow" ||
@@ -396,6 +407,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   const resetEditorFontSettings = useCallback(async () => {
     setEditorFontSettings(defaultEditorFontSettings);
     setTextDirectionState("auto");
+    setLineNumbersState("off");
     setEditorWidthState("normal");
     setInterfaceZoomState(1.0);
     setCustomEditorWidthPxState(DEFAULT_CUSTOM_WIDTH_PX);
@@ -408,6 +420,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         ...settings,
         editorFont: defaultEditorFontSettings,
         textDirection: "auto",
+        lineNumbers: undefined,
         editorWidth: "normal",
         interfaceZoom: 1.0,
         customEditorWidthPx: undefined,
@@ -428,6 +441,17 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       await updateSettings({ ...settings, textDirection: dir });
     } catch (error) {
       console.error("Failed to save text direction:", error);
+    }
+  }, []);
+
+  // Save and set line number visibility
+  const setLineNumbers = useCallback(async (level: LineNumbers) => {
+    setLineNumbersState(level);
+    try {
+      const settings = await getSettings();
+      await updateSettings({ ...settings, lineNumbers: level });
+    } catch (error) {
+      console.error("Failed to save line numbers setting:", error);
     }
   }, []);
 
@@ -592,7 +616,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     [],
   );
 
-  // Live CSS variable update during drag (no persistence)
+  // Applies a width right away, ahead of the state update (no persistence)
   const setEditorMaxWidthLive = useCallback((value: string) => {
     document.documentElement.style.setProperty("--editor-max-width", value);
   }, []);
@@ -620,6 +644,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         reloadSettings,
         textDirection,
         setTextDirection,
+        lineNumbers,
+        setLineNumbers,
         editorWidth,
         setEditorWidth,
         interfaceZoom,

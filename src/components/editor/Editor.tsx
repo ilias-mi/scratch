@@ -70,6 +70,9 @@ import { SearchToolbar } from "./SearchToolbar";
 import { SlashCommand } from "./SlashCommand";
 import { NoteNameBar } from "./NoteNameBar";
 import { SectionPath } from "./SectionPath";
+import { SourceLineNumbers } from "./SourceLineNumbers";
+import { LineCounter } from "./LineCounter";
+import { ResizableTable, TableWidths } from "./TableWidths";
 import { TabBar } from "./TabBar";
 import { getNotePosition, setNotePosition } from "../../lib/notePositions";
 import {
@@ -151,6 +154,14 @@ function formatDateTime(timestamp: number): string {
 
 // Number of recently left notes whose parsed documents are kept for fast switching
 const DOC_CACHE_SIZE = 10;
+
+// Shared by the source textarea and its line numbers so their lines stay aligned
+const SOURCE_TEXT_STYLE = {
+  fontFamily:
+    "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, 'Courier New', monospace",
+  fontSize: "0.875em",
+  lineHeight: "var(--editor-line-height)",
+};
 
 // Standard number-field shortcuts for KaTeX (shared between inline and block math)
 const katexMacros: Record<string, string> = {
@@ -686,7 +697,7 @@ export function Editor({
   const pinNote = notesCtx?.pinNote;
   const unpinNote = notesCtx?.unpinNote;
   const notes = notesCtx?.notes;
-  const { textDirection } = useTheme();
+  const { textDirection, lineNumbers } = useTheme();
   const [isSaving, setIsSaving] = useState(false);
   // Force re-render when selection changes to update toolbar active states
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
@@ -703,6 +714,7 @@ export function Editor({
   // Delay format bar / header transitions only when the sidebar needs to animate closed
   const needsSidebarDelay = focusMode && sidebarVisible;
   const isSidebarActive = sidebarVisible && !focusMode;
+  const lineNumbersVisible = lineNumbers !== "off" && !focusMode;
   // Filename bar: revealed by scrolling up, hidden again by scrolling down
   const [nameBarVisible, setNameBarVisible] = useState(false);
   const nameBarVisibleRef = useRef(nameBarVisible);
@@ -714,6 +726,7 @@ export function Editor({
   const sourceModeRef = useRef(sourceMode);
   sourceModeRef.current = sourceMode;
   const [sourceContent, setSourceContent] = useState("");
+  const sourceTextareaRef = useRef<HTMLTextAreaElement>(null);
   const sourceTimeoutRef = useRef<number | null>(null);
   const sourceModeTransitionRef = useRef<{
     topBlockIndex: number;
@@ -1346,14 +1359,9 @@ export function Editor({
       TaskItem.configure({
         nested: true,
       }),
-      TableKit.configure({
-        table: {
-          resizable: false,
-          HTMLAttributes: {
-            class: "not-prose",
-          },
-        },
-      }),
+      TableKit.configure({ table: false }),
+      ResizableTable,
+      TableWidths,
       Frontmatter,
       Markdown.configure({}),
       SearchHighlight.configure({
@@ -2613,6 +2621,14 @@ export function Editor({
         <div
           className={`titlebar-no-drag flex items-center gap-px shrink-0 transition-opacity duration-400 ${needsSidebarDelay ? "delay-200" : ""} ${focusMode ? "opacity-0 pointer-events-none" : "opacity-100"}`}
         >
+          {editor && (
+            <LineCounter
+              editor={editor}
+              sourceMode={sourceMode}
+              sourceContent={sourceContent}
+              sourceTextareaRef={sourceTextareaRef}
+            />
+          )}
           {hasExternalChanges ? (
             <Tooltip
               content={`External changes detected (${mod}${isMac ? "" : "+"}R to refresh)`}
@@ -2829,27 +2845,31 @@ export function Editor({
         <div
           data-editor-scroll
           ref={scrollContainerRef}
-          className="absolute inset-0 overflow-y-auto overflow-x-hidden"
+          className={`absolute inset-0 overflow-y-auto overflow-x-hidden ${lineNumbersVisible ? `line-numbers line-numbers-${lineNumbers}` : ""}`}
           dir={textDirection}
           onWheel={handleEditorWheel}
         >
           {sourceMode ? (
             /* Markdown source textarea */
-            <div className="h-full">
+            <div
+              className="relative h-full mx-auto"
+              style={{ maxWidth: "var(--editor-max-width, 48rem)" }}
+            >
+              {lineNumbersVisible && (
+                <SourceLineNumbers
+                  textareaRef={sourceTextareaRef}
+                  lineCount={sourceContent.split("\n").length}
+                  textStyle={SOURCE_TEXT_STYLE}
+                />
+              )}
               <textarea
+                ref={sourceTextareaRef}
                 value={sourceContent}
                 onChange={(e) => handleSourceChange(e.target.value)}
                 wrap="off"
                 dir={textDirection}
-                className="w-full h-full bg-transparent text-text focus:outline-none resize-none px-6 pt-8 pb-24 mx-auto block"
-                style={{
-                  maxWidth: "var(--editor-max-width, 48rem)",
-                  fontFamily:
-                    "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, 'Courier New', monospace",
-                  fontSize: "0.875em",
-                  lineHeight: "var(--editor-line-height)",
-                  tabSize: 2,
-                }}
+                className="source-textarea w-full h-full bg-transparent text-text focus:outline-none resize-none px-6 pt-8 pb-24 block"
+                style={{ ...SOURCE_TEXT_STYLE, tabSize: 2 }}
                 spellCheck={false}
               />
             </div>

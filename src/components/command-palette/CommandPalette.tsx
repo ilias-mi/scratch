@@ -43,6 +43,7 @@ import {
   ClaudeIcon,
   ZenIcon,
   MarkdownIcon,
+  ListOrderedIcon,
   CodexIcon,
   OpenCodeIcon,
   OllamaIcon,
@@ -95,7 +96,7 @@ export function CommandPalette({
     unpinNote,
     notesFolder,
   } = useNotes();
-  const { setTheme } = useTheme();
+  const { setTheme, lineNumbers, setLineNumbers } = useTheme();
   const { status, gitAvailable, gitEnabled, commit, sync, isSyncing } = useGit();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -453,6 +454,15 @@ export function CommandPalette({
           onClose();
         },
       },
+      {
+        id: "toggle-line-numbers",
+        label: lineNumbers === "off" ? "Show Line Numbers" : "Hide Line Numbers",
+        icon: <ListOrderedIcon className="w-4.5 h-4.5 stroke-[1.5]" />,
+        action: () => {
+          setLineNumbers(lineNumbers === "off" ? "faint" : "off");
+          onClose();
+        },
+      },
     );
 
     // Open notes folder
@@ -547,6 +557,8 @@ export function CommandPalette({
     unpinNote,
     focusMode,
     onToggleFocusMode,
+    lineNumbers,
+    setLineNumbers,
     notesFolder,
     onOpenShortcuts,
   ]);

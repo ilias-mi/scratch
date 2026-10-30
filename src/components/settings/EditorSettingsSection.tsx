@@ -5,6 +5,7 @@ import type {
   FontFamily,
   TextDirection,
   EditorWidth,
+  LineNumbers,
   ThemeColorKey,
 } from "../../types/note";
 import { ChevronRightIcon, EyeIcon, MinusIcon, PlusIcon } from "../icons";
@@ -30,6 +31,13 @@ const textDirectionOptions: { value: TextDirection; label: string }[] = [
   { value: "auto", label: "Auto" },
   { value: "ltr", label: "LTR" },
   { value: "rtl", label: "RTL" },
+];
+
+// Line number options
+const lineNumberOptions: { value: LineNumbers; label: string }[] = [
+  { value: "off", label: "Off" },
+  { value: "faint", label: "Faint" },
+  { value: "subtle", label: "Subtle" },
 ];
 
 // Page width options
@@ -66,6 +74,8 @@ export function AppearanceSettingsSection() {
     resetEditorFontSettings,
     textDirection,
     setTextDirection,
+    lineNumbers,
+    setLineNumbers,
     editorWidth,
     setEditorWidth,
     interfaceZoom,
@@ -99,6 +109,7 @@ export function AppearanceSettingsSection() {
     editorFontSettings.boldWeight !== 600 ||
     editorFontSettings.lineHeight !== 1.6 ||
     textDirection !== "auto" ||
+    lineNumbers !== "off" ||
     editorWidth !== "normal" ||
     Math.round(interfaceZoom * 100) !== 100;
 
@@ -275,6 +286,24 @@ export function AppearanceSettingsSection() {
               className="w-40"
             >
               {textDirectionOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          {/* Line Numbers */}
+          <div className="flex items-center justify-between">
+            <label className="text-sm text-text font-medium">
+              Line Numbers
+            </label>
+            <Select
+              value={lineNumbers}
+              onChange={(e) => setLineNumbers(e.target.value as LineNumbers)}
+              className="w-40"
+            >
+              {lineNumberOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>

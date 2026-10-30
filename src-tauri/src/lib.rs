@@ -122,6 +122,8 @@ pub struct Settings {
     pub interface_zoom: Option<f32>,
     #[serde(rename = "customEditorWidthPx")]
     pub custom_editor_width_px: Option<u32>,
+    #[serde(rename = "lineNumbers")]
+    pub line_numbers: Option<String>,
     /// Custom sidebar width in px; `None` means the default width is used.
     #[serde(rename = "sidebarWidthPx")]
     pub sidebar_width_px: Option<u32>,
@@ -480,7 +482,7 @@ fn generate_preview(content: &str) -> String {
     let body = strip_frontmatter(content);
     for line in body.lines() {
         let trimmed = line.trim();
-        if !trimmed.is_empty() {
+        if !trimmed.is_empty() && !trimmed.starts_with("<!-- table-widths:") {
             let stripped = strip_markdown(trimmed);
             if !stripped.is_empty() {
                 return stripped.chars().take(100).collect();

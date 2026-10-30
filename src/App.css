@@ -495,6 +495,105 @@ html.dark {
   font-weight: 400;
 }
 
+/* Line numbers. One counter runs through the note: text blocks number themselves here and code
+   blocks add a span per line (CodeBlockView). Numbers sit in a column at the note's start edge, so
+   callouts drop their positioning to keep them there. Screen only, so they never print. */
+.code-line-numbers,
+.source-line-numbers {
+  display: none;
+}
+
+@media screen {
+  .line-numbers .ProseMirror {
+    position: relative;
+    padding-inline-start: 4rem;
+    counter-reset: line;
+  }
+
+  .line-numbers .prose .callout {
+    position: static;
+  }
+
+  .line-numbers .ProseMirror :is(p, h1, h2, h3, h4, h5, h6, .code-line-number) {
+    counter-increment: line;
+  }
+
+  .line-numbers .ProseMirror :is(td, th, .mermaid-preview) p {
+    counter-increment: none;
+  }
+
+  .line-numbers
+    .ProseMirror
+    :is(p, h1, h2, h3, h4, h5, h6):not(.is-editor-empty):not(:is(td, th, .mermaid-preview) p)::before {
+    content: counter(line);
+    position: absolute;
+    inset-inline-start: 0;
+    width: 3rem;
+    font-size: 0.75rem;
+    line-height: 1lh;
+    text-align: end;
+  }
+
+  .line-numbers .prose blockquote p:last-of-type::after {
+    content: none;
+  }
+
+  .line-numbers .code-line-numbers {
+    display: block;
+    position: absolute;
+    inset-inline-end: 100%;
+    margin-inline-end: 1rem;
+    font-size: 0.933em;
+    text-align: end;
+  }
+
+  .code-line-number {
+    display: block;
+  }
+
+  .code-line-number::before {
+    content: counter(line);
+  }
+
+  .line-numbers .source-textarea {
+    padding-inline-start: 4rem;
+  }
+
+  .line-numbers .source-line-numbers {
+    display: block;
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: 3rem;
+    padding-top: 2rem;
+    overflow: hidden;
+    text-align: end;
+    white-space: pre;
+  }
+
+  .line-numbers
+    .ProseMirror
+    :is(p, h1, h2, h3, h4, h5, h6):not(.is-editor-empty):not(:is(td, th, .mermaid-preview) p)::before,
+  .line-numbers .code-line-numbers,
+  .line-numbers .source-line-numbers {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, "Courier New", monospace;
+    font-style: normal;
+    font-weight: 400;
+    letter-spacing: normal;
+    color: color-mix(in srgb, var(--color-text-muted) 45%, transparent);
+    user-select: none;
+    pointer-events: none;
+  }
+
+  .line-numbers-faint
+    .ProseMirror
+    :is(p, h1, h2, h3, h4, h5, h6):not(.is-editor-empty):not(:is(td, th, .mermaid-preview) p)::before,
+  .line-numbers-faint .code-line-numbers,
+  .line-numbers-faint .source-line-numbers {
+    color: color-mix(in srgb, var(--color-text-muted) 22%, transparent);
+  }
+}
+
 /* Language selector */
 .code-block-language-selector {
   position: absolute;
@@ -1080,9 +1179,45 @@ table.not-prose th > * {
 
 .tableWrapper table {
   margin: 0;
+}
+
+.tableWrapper table:not(.fixed-columns) {
   width: max-content !important;
   max-width: 100% !important;
   min-width: 0 !important;
+}
+
+/* Resized tables take their width from their columns and scroll in .tableWrapper */
+.tableWrapper table.fixed-columns {
+  display: table;
+  table-layout: fixed;
+  max-width: none;
+}
+
+.tableWrapper table.fixed-columns :is(th, td) {
+  min-width: 0;
+}
+
+/* The cursor is set here rather than with .resize-cursor, which prosemirror-tables puts on the
+   whole note, so hovering a column edge doesn't restyle it */
+.column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 8px;
+  cursor: col-resize;
+}
+
+.column-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -1px;
+  bottom: 0;
+  width: 2px;
+  background-color: var(--color-text-muted);
 }
 
 /* stylelint-enable selector-class-pattern */
