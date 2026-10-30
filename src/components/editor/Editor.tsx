@@ -67,9 +67,9 @@ import { Frontmatter } from "./Frontmatter";
 import { BlockMathEditor } from "./BlockMathEditor";
 import { LinkEditor } from "./LinkEditor";
 import { SearchToolbar } from "./SearchToolbar";
-import { HeadingIndicator } from "./HeadingIndicator";
 import { SlashCommand } from "./SlashCommand";
 import { NoteNameBar } from "./NoteNameBar";
+import { SectionPath } from "./SectionPath";
 import { TabBar } from "./TabBar";
 import { getNotePosition, setNotePosition } from "../../lib/notePositions";
 import {
@@ -686,7 +686,7 @@ export function Editor({
   const pinNote = notesCtx?.pinNote;
   const unpinNote = notesCtx?.unpinNote;
   const notes = notesCtx?.notes;
-  const { textDirection, headingIndicator } = useTheme();
+  const { textDirection } = useTheme();
   const [isSaving, setIsSaving] = useState(false);
   // Force re-render when selection changes to update toolbar active states
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
@@ -2798,10 +2798,14 @@ export function Editor({
         />
       </div>
 
-      {/* Editor content area with resize handles overlay */}
-      <div data-editor-content-area className="flex-1 relative overflow-hidden">
-        {!focusMode && !sourceMode && (
-          <EditorWidthHandles containerRef={scrollContainerRef} />
+      {/* Section path sits above the content; the filename bar slides over it */}
+      <div className="relative z-20">
+        {editor && !sourceMode && !focusMode && !previewMode && (
+          <SectionPath
+            editor={editor}
+            scrollContainerRef={scrollContainerRef}
+            hidden={nameBarVisible}
+          />
         )}
         {!previewMode && (
           <NoteNameBar
@@ -2812,6 +2816,13 @@ export function Editor({
             onRename={handleRename}
             onDone={handleNameDone}
           />
+        )}
+      </div>
+
+      {/* Editor content area with resize handles overlay */}
+      <div data-editor-content-area className="flex-1 relative overflow-hidden">
+        {!focusMode && !sourceMode && (
+          <EditorWidthHandles containerRef={scrollContainerRef} />
         )}
         <div
           data-editor-scroll
@@ -3059,13 +3070,6 @@ export function Editor({
             </>
           )}
         </div>
-        {editor && !sourceMode && !focusMode && (
-          <HeadingIndicator
-            editor={editor}
-            scrollContainerRef={scrollContainerRef}
-            mode={headingIndicator}
-          />
-        )}
       </div>
     </div>
   );

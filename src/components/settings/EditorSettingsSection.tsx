@@ -5,7 +5,6 @@ import type {
   FontFamily,
   TextDirection,
   EditorWidth,
-  HeadingIndicatorMode,
   ThemeColorKey,
 } from "../../types/note";
 import { ChevronRightIcon, EyeIcon, MinusIcon, PlusIcon } from "../icons";
@@ -42,12 +41,6 @@ const editorWidthOptions: { value: EditorWidth; label: string }[] = [
   { value: "custom", label: "Custom" },
 ];
 
-// Heading indicator view options
-const headingIndicatorOptions: { value: HeadingIndicatorMode; label: string }[] = [
-  { value: "focused", label: "Focused" },
-  { value: "outline", label: "Full Outline" },
-];
-
 // Font family options
 const fontFamilyOptions: { value: FontFamily; label: string }[] = [
   { value: "system-sans", label: "Sans" },
@@ -79,8 +72,6 @@ export function AppearanceSettingsSection() {
     setInterfaceZoom,
     customEditorWidthPx,
     setCustomEditorWidthPx,
-    headingIndicator,
-    setHeadingIndicator,
     customColorsLight,
     customColorsDark,
     setCustomColor,
@@ -109,7 +100,6 @@ export function AppearanceSettingsSection() {
     editorFontSettings.lineHeight !== 1.6 ||
     textDirection !== "auto" ||
     editorWidth !== "normal" ||
-    headingIndicator !== "focused" ||
     Math.round(interfaceZoom * 100) !== 100;
 
   // Filter weight options based on font family
@@ -285,26 +275,6 @@ export function AppearanceSettingsSection() {
               className="w-40"
             >
               {textDirectionOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          {/* Heading Indicator */}
-          <div className="flex items-center justify-between">
-            <label className="text-sm text-text font-medium">
-              Heading Indicator
-            </label>
-            <Select
-              value={headingIndicator}
-              onChange={(e) =>
-                setHeadingIndicator(e.target.value as HeadingIndicatorMode)
-              }
-              className="w-40"
-            >
-              {headingIndicatorOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>

@@ -18,7 +18,6 @@ export const NoteNameBar = memo(
     ref,
   ) {
     const slash = noteId.lastIndexOf("/");
-    const folder = slash > 0 ? noteId.substring(0, slash) : "";
     const name = noteId.substring(slash + 1);
     const [value, setValue] = useState(name);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -53,15 +52,8 @@ export const NoteNameBar = memo(
           visible ? "visible translate-y-0 opacity-100" : "invisible -translate-y-full opacity-0",
         )}
       >
-        <div
-          className="mx-auto flex items-center px-6 h-9 text-sm"
-          style={{ maxWidth: "var(--editor-max-width, 48rem)" }}
-        >
-          {folder && (
-            <span className="shrink-0 truncate max-w-[40%] text-text-muted">
-              {folder.split("/").join(" / ")}&nbsp;/&nbsp;
-            </span>
-          )}
+        <div className="flex items-center px-4 h-6 text-xs">
+          <span className="shrink-0 pr-1.5 text-text-muted">filename:</span>
           <input
             ref={inputRef}
             value={value}
