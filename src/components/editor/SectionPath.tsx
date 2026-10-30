@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import { cn } from "../../lib/utils";
 import { ChevronDownIcon } from "../icons";
@@ -25,6 +25,50 @@ const COLLAPSE_MS = 160;
 const EXPAND_EASING = "cubic-bezier(0.16, 1, 0.3, 1)";
 const COLLAPSE_EASING = "cubic-bezier(0.4, 0, 1, 1)";
 
+/**
+ * Line along the bottom of the bar that fills as the note scrolls. It writes the transform directly,
+ * so scrolling re-renders nothing and restyles only this element. Empty when the note fits the window.
+ */
+function ReadingProgress({ editor, scrollContainerRef }: Omit<SectionPathProps, "hidden">) {
+  const barRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const scrollable = container.scrollHeight - container.clientHeight;
+      const progress = scrollable > 0 ? Math.min(container.scrollTop / scrollable, 1) : 0;
+      if (barRef.current) barRef.current.style.transform = `scaleX(${progress})`;
+    };
+    const scheduleUpdate = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+
+    update();
+    container.addEventListener("scroll", scheduleUpdate, { passive: true });
+    // Typing, images loading and width changes all move the scrollable distance without scrolling
+    const observer = new ResizeObserver(scheduleUpdate);
+    observer.observe(container);
+    observer.observe(editor.view.dom);
+    return () => {
+      container.removeEventListener("scroll", scheduleUpdate);
+      observer.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [editor, scrollContainerRef]);
+
+  return (
+    <div
+      ref={barRef}
+      aria-hidden
+      className="pointer-events-none absolute inset-x-0 -bottom-px h-px origin-left bg-text-muted"
+    />
+  );
+}
+
 interface SectionPathProps {
   editor: TiptapEditor;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
@@ -35,7 +79,8 @@ interface SectionPathProps {
 /**
  * Breadcrumb of the section in view, such as "My big title / the story". When it doesn't fit, the
  * enclosing headings shorten first so the innermost one stays whole; only then does it shorten too.
- * It takes its own row above the note. Clicking it opens the tree of all headings to jump to.
+ * It takes its own row above the note, with the reading progress along its bottom edge. Clicking it
+ * opens the tree of all headings to jump to.
  */
 export const SectionPath = memo(function SectionPath({
   editor,
@@ -124,6 +169,7 @@ export const SectionPath = memo(function SectionPath({
           </span>
         </button>
       </div>
+      <ReadingProgress editor={editor} scrollContainerRef={scrollContainerRef} />
       {mounted && (
         <div
           inert={!expanded}

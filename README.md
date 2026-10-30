@@ -7,7 +7,7 @@
 >
 > - **Alphabetical notes in folders** - Notes inside folders are sorted A–Z (pinned notes stay on top; root-level notes keep newest-first order)
 > - **Sidebar hover reveal** - When the sidebar is hidden, resting the pointer near the left edge of the note editor reveals it, just like the toggle button would. It hides again once the pointer moves away, with a short dwell time so quick movements out of the window don't trigger it
-> - **Section path** - A bar above the note shows where you are as a breadcrumb of headings (`My big title / the story`), following the cursor after clicks or typing and the scroll position when scrolling. When it doesn't fit, the enclosing headings shorten first so the current one stays whole. Click the bar to expand an animated tree of all headings across the window and jump to one (Esc or a click elsewhere closes it). It replaces the heading indicator on the right edge and its setting. Hidden in source, focus and preview mode and in notes without headings
+> - **Section path** - A bar above the note shows where you are as a breadcrumb of headings (`My big title / the story`), following the cursor after clicks or typing and the scroll position when scrolling. When it doesn't fit, the enclosing headings shorten first so the current one stays whole. A thin line along the bottom of the bar shows how far through the note you've read. Click the bar to expand an animated tree of all headings across the window and jump to one (Esc or a click elsewhere closes it). It replaces the heading indicator on the right edge and its setting. Hidden in source, focus and preview mode and in notes without headings
 > - **Callouts** - Turn a passage into a colored callout from the toolbar or the `/` menu: Note, Info, Tip, Important, Definition, Example, Question, Summary, Exam, Warning, Caution, and Plain (gray, without a title). Saved as GitHub-style `> [!NOTE]` blockquotes, so they render as alerts on GitHub and as plain quotes elsewhere
 > - **Inline math** - Typing `$` (or the Inline Math toolbar button) opens a popup that renders the formula live at the cursor as you type; press Space on the empty field for a literal `$`. Click inline math to edit it the same way. In saved notes `$x^2$` is inline math following the Pandoc rule (no space just inside the `$` signs, no digit right after the closing one), so prices like `$5 and $10` stay plain text
 > - **Highlights** - Highlight text in yellow, green, blue, pink, or gray from the toolbar (`Cmd+Shift+H` for yellow). Yellow is saved as `==text==`, other colors as `<mark data-color="...">`
@@ -47,7 +47,7 @@ A minimalist, offline-first markdown note-taking app for macOS, Windows, and Lin
 - **Tabs and windows** - Open notes in tabs or in separate windows
 - **Remembered positions** - Each note reopens at the scroll position and cursor where you left it, for 12 hours after you last left it
 - **Filenames you control** - A note's filename is its title and never changes with its content; rename from the sidebar or the filename bar above the note
-- **Section path** - A breadcrumb of the current heading above the note, expandable to the full heading tree
+- **Section path** - A breadcrumb of the current heading above the note with a reading progress line, expandable to the full heading tree
 - **Keyboard optimized** - Lots of shortcuts and a command palette
 - **Customizable** - Theme, typography, page width, and RTL text direction
 - **Git integration** - Optional version control with push/pull for multi-device sync
