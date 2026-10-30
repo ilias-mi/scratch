@@ -27,6 +27,7 @@ import { lowlight } from "./lowlight";
 import { CodeBlockView } from "./CodeBlockView";
 import { Extension, InputRule } from "@tiptap/core";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
   NodeSelection,
   Plugin,
@@ -66,8 +67,14 @@ import { Frontmatter } from "./Frontmatter";
 import { BlockMathEditor } from "./BlockMathEditor";
 import { LinkEditor } from "./LinkEditor";
 import { SearchToolbar } from "./SearchToolbar";
-import { HeadingIndicator } from "./HeadingIndicator";
 import { SlashCommand } from "./SlashCommand";
+import { NoteNameBar } from "./NoteNameBar";
+import { SectionPath } from "./SectionPath";
+import { SourceLineNumbers } from "./SourceLineNumbers";
+import { LineCounter } from "./LineCounter";
+import { ResizableTable, TableWidths } from "./TableWidths";
+import { TabBar } from "./TabBar";
+import { getNotePosition, setNotePosition } from "../../lib/notePositions";
 import {
   Callout,
   CALLOUT_LABELS,
@@ -86,12 +93,19 @@ import { EditorWidthHandles } from "./EditorWidthHandle";
 import {
   ScratchBlockMath,
   ScratchInlineMath,
+  getMathPreviewElement,
   normalizeBlockMath,
   setMathPreview,
 } from "./MathExtensions";
 import { cn } from "../../lib/utils";
 import { plainTextFromMarkdown } from "../../lib/plainText";
-import { Button, IconButton, ToolbarButton, Tooltip } from "../ui";
+import {
+  Button,
+  IconButton,
+  TOOLBAR_TOOLTIP_DELAY_MS,
+  ToolbarButton,
+  Tooltip,
+} from "../ui";
 import * as notesService from "../../services/notes";
 import { downloadPdf, downloadMarkdown } from "../../services/pdf";
 import type { Settings } from "../../types/note";
@@ -99,12 +113,6 @@ import {
   BoldIcon,
   ItalicIcon,
   StrikethroughIcon,
-  Heading1Icon,
-  Heading2Icon,
-  Heading3Icon,
-  Heading4Icon,
-  ListIcon,
-  ListOrderedIcon,
   CheckSquareIcon,
   QuoteIcon,
   CodeIcon,
@@ -144,31 +152,16 @@ function formatDateTime(timestamp: number): string {
   });
 }
 
-function focusAndSelectTitle(editor: TiptapEditor): boolean {
-  let titleFrom = -1;
-  let titleTo = -1;
+// Number of recently left notes whose parsed documents are kept for fast switching
+const DOC_CACHE_SIZE = 10;
 
-  editor.state.doc.descendants((node, pos) => {
-    if (node.type.name !== "heading" || node.attrs.level !== 1) {
-      return true;
-    }
-    titleFrom = pos + 1;
-    titleTo = pos + node.nodeSize - 1;
-    return false;
-  });
-
-  if (titleFrom < 0 || titleTo < 0) return false;
-
-  editor
-    .chain()
-    .focus()
-    .setTextSelection(
-      titleFrom === titleTo ? titleFrom : { from: titleFrom, to: titleTo },
-    )
-    .run();
-
-  return true;
-}
+// Shared by the source textarea and its line numbers so their lines stay aligned
+const SOURCE_TEXT_STYLE = {
+  fontFamily:
+    "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, 'Courier New', monospace",
+  fontSize: "0.875em",
+  lineHeight: "var(--editor-line-height)",
+};
 
 // Standard number-field shortcuts for KaTeX (shared between inline and block math)
 const katexMacros: Record<string, string> = {
@@ -311,7 +304,10 @@ function HighlightMenu({ editor, isActive }: HighlightMenuProps) {
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={setOpen} modal={false}>
-      <Tooltip content={`Highlight (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}H)`}>
+      <Tooltip
+        content={`Highlight (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}H)`}
+        delayDuration={TOOLBAR_TOOLTIP_DELAY_MS}
+      >
         <DropdownMenu.Trigger asChild>
           <ToolbarButton isActive={isActive}>
             <HighlighterIcon className="w-4.5 h-4.5 stroke-[1.5]" />
@@ -361,7 +357,7 @@ function CalloutMenu({ editor, isActive }: CalloutMenuProps) {
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={setOpen} modal={false}>
-      <Tooltip content="Callout">
+      <Tooltip content="Callout" delayDuration={TOOLBAR_TOOLTIP_DELAY_MS}>
         <DropdownMenu.Trigger asChild>
           <ToolbarButton isActive={isActive}>
             <CalloutIcon className="w-4.5 h-4.5 stroke-[1.5]" />
@@ -429,12 +425,6 @@ const FormatBar = memo(function FormatBar({
         italic: e.isActive("italic"),
         strike: e.isActive("strike"),
         highlight: e.isActive("highlight"),
-        heading1: e.isActive("heading", { level: 1 }),
-        heading2: e.isActive("heading", { level: 2 }),
-        heading3: e.isActive("heading", { level: 3 }),
-        heading4: e.isActive("heading", { level: 4 }),
-        bulletList: e.isActive("bulletList"),
-        orderedList: e.isActive("orderedList"),
         taskList: e.isActive("taskList"),
         blockquote: e.isActive("blockquote"),
         callout: e.isActive("callout"),
@@ -476,51 +466,6 @@ const FormatBar = memo(function FormatBar({
 
       <div className="w-px h-4.5 border-l border-border mx-2" />
 
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        isActive={active.heading1}
-        title={`Heading 1 (${mod}${isMac ? "" : "+"}${alt}${isMac ? "" : "+"}1)`}
-      >
-        <Heading1Icon className="w-4.5 h-4.5 stroke-[1.5]" />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        isActive={active.heading2}
-        title={`Heading 2 (${mod}${isMac ? "" : "+"}${alt}${isMac ? "" : "+"}2)`}
-      >
-        <Heading2Icon className="w-4.5 h-4.5 stroke-[1.5]" />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-        isActive={active.heading3}
-        title={`Heading 3 (${mod}${isMac ? "" : "+"}${alt}${isMac ? "" : "+"}3)`}
-      >
-        <Heading3Icon className="w-4.5 h-4.5 stroke-[1.5]" />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()}
-        isActive={active.heading4}
-        title={`Heading 4 (${mod}${isMac ? "" : "+"}${alt}${isMac ? "" : "+"}4)`}
-      >
-        <Heading4Icon className="w-4.5 h-4.5 stroke-[1.5]" />
-      </ToolbarButton>
-
-      <div className="w-px h-4.5 border-l border-border mx-2" />
-
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-        isActive={active.bulletList}
-        title={`Bullet List (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}8)`}
-      >
-        <ListIcon className="w-4.5 h-4.5 stroke-[1.5]" />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        isActive={active.orderedList}
-        title={`Numbered List (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}7)`}
-      >
-        <ListOrderedIcon className="w-4.5 h-4.5 stroke-[1.5]" />
-      </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleTaskList().run()}
         isActive={active.taskList}
@@ -596,7 +541,7 @@ const FormatBar = memo(function FormatBar({
         onOpenChange={setTableMenuOpen}
         modal={false}
       >
-        <Tooltip content="Insert Table">
+        <Tooltip content="Insert Table" delayDuration={TOOLBAR_TOOLTIP_DELAY_MS}>
           <DropdownMenu.Trigger asChild>
             <ToolbarButton isActive={active.table}>
               <TableIcon className="w-4.5 h-4.5 stroke-[1.5]" />
@@ -736,6 +681,10 @@ export function Editor({
 
   const createNote = notesCtx?.createNote;
   const consumePendingNewNote = notesCtx?.consumePendingNewNote;
+  const renameNote = notesCtx?.renameNote;
+  const resolveNoteId = notesCtx?.resolveNoteId;
+  const isPreview = !!previewMode;
+  const showTabs = (notesCtx?.tabs.length ?? 0) > 1;
   const hasExternalChanges = previewMode
     ? previewMode.hasExternalChanges
     : notesCtx!.hasExternalChanges;
@@ -748,7 +697,7 @@ export function Editor({
   const pinNote = notesCtx?.pinNote;
   const unpinNote = notesCtx?.unpinNote;
   const notes = notesCtx?.notes;
-  const { textDirection, headingIndicator } = useTheme();
+  const { textDirection, lineNumbers } = useTheme();
   const [isSaving, setIsSaving] = useState(false);
   // Force re-render when selection changes to update toolbar active states
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
@@ -765,9 +714,19 @@ export function Editor({
   // Delay format bar / header transitions only when the sidebar needs to animate closed
   const needsSidebarDelay = focusMode && sidebarVisible;
   const isSidebarActive = sidebarVisible && !focusMode;
+  const lineNumbersVisible = lineNumbers !== "off" && !focusMode;
+  // Filename bar: revealed by scrolling up, hidden again by scrolling down
+  const [nameBarVisible, setNameBarVisible] = useState(false);
+  const nameBarVisibleRef = useRef(nameBarVisible);
+  nameBarVisibleRef.current = nameBarVisible;
+  const [nameFocusRequest, setNameFocusRequest] = useState(0);
+  const nameBarRef = useRef<HTMLDivElement>(null);
   // Source mode state
   const [sourceMode, setSourceMode] = useState(false);
+  const sourceModeRef = useRef(sourceMode);
+  sourceModeRef.current = sourceMode;
   const [sourceContent, setSourceContent] = useState("");
+  const sourceTextareaRef = useRef<HTMLTextAreaElement>(null);
   const sourceTimeoutRef = useRef<number | null>(null);
   const sourceModeTransitionRef = useRef<{
     topBlockIndex: number;
@@ -790,7 +749,6 @@ export function Editor({
   const isLoadingRef = useRef(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<TiptapEditor | null>(null);
-  const currentNoteIdRef = useRef<string | null>(null);
   // Track if we need to save (use ref to avoid computing markdown on every keystroke)
   const needsSaveRef = useRef(false);
   // Stable refs for wikilink click handler (avoids re-registering listener on every notes change)
@@ -798,9 +756,6 @@ export function Editor({
   notesRef.current = notes;
   const notesCtxRef = useRef(notesCtx);
   notesCtxRef.current = notesCtx;
-
-  // Keep ref in sync with current note ID
-  currentNoteIdRef.current = currentNote?.id ?? null;
 
   // Get markdown from editor
   const getMarkdown = useCallback(
@@ -931,9 +886,9 @@ export function Editor({
   // Immediate save function (used for flushing)
   const saveImmediately = useCallback(
     async (noteId: string, content: string) => {
+      if (noteId === loadedNoteIdRef.current) loadedContentRef.current = content;
       setIsSaving(true);
       try {
-        lastSaveRef.current = { noteId, content };
         await saveNote(content, noteId);
       } finally {
         setIsSaving(false);
@@ -949,7 +904,7 @@ export function Editor({
       saveTimeoutRef.current = null;
     }
 
-    // Use loadedNoteIdRef (the note in the editor) not currentNoteIdRef (which may have changed)
+    // Use loadedNoteIdRef (the note in the editor), which may lag behind currentNote
     if (needsSaveRef.current && editorRef.current && loadedNoteIdRef.current) {
       needsSaveRef.current = false;
       const markdown = getMarkdown(editorRef.current);
@@ -963,24 +918,20 @@ export function Editor({
       clearTimeout(saveTimeoutRef.current);
     }
 
-    const savingNoteId = currentNote?.id;
-    if (!savingNoteId) return;
-
     needsSaveRef.current = true;
 
+    // Save to the note loaded when the timer fires, so a rename in between is followed.
+    // Switching notes flushes and clears this timer first.
     saveTimeoutRef.current = window.setTimeout(async () => {
-      if (currentNoteIdRef.current !== savingNoteId || !needsSaveRef.current) {
-        return;
-      }
+      const noteId = loadedNoteIdRef.current;
+      if (!noteId || !needsSaveRef.current || !editorRef.current) return;
 
       // Compute markdown only now, when we actually save
-      if (editorRef.current) {
-        needsSaveRef.current = false;
-        const markdown = getMarkdown(editorRef.current);
-        await saveImmediately(savingNoteId, markdown);
-      }
+      needsSaveRef.current = false;
+      const markdown = getMarkdown(editorRef.current);
+      await saveImmediately(noteId, markdown);
     }, 500);
-  }, [saveImmediately, getMarkdown, currentNote?.id]);
+  }, [saveImmediately, getMarkdown]);
 
   const clearMathPreview = useCallback(() => {
     const currentEditor = editorRef.current;
@@ -1019,8 +970,13 @@ export function Editor({
 
       const virtualElement = {
         getBoundingClientRect: () => {
-          // Inline math is hidden behind its live preview while editing
-          if (isInline) return getSelectionRect(currentEditor, pos, pos);
+          // Inline math is hidden while editing; its live preview takes its place
+          if (isInline) {
+            return (
+              getMathPreviewElement()?.getBoundingClientRect() ??
+              getSelectionRect(currentEditor, pos, pos)
+            );
+          }
           const nodeDom = currentEditor.view.nodeDOM(pos);
           if (nodeDom instanceof HTMLElement) {
             return nodeDom.getBoundingClientRect();
@@ -1319,7 +1275,10 @@ export function Editor({
       });
 
       blockMathPopupRef.current = tippy(document.body, {
-        getReferenceClientRect: () => getSelectionRect(currentEditor, from, to),
+        // Anchored to the live preview, which sits where the formula will go
+        getReferenceClientRect: () =>
+          getMathPreviewElement()?.getBoundingClientRect() ??
+          getSelectionRect(currentEditor, from, to),
         appendTo: () => document.body,
         content: component.element,
         showOnCreate: true,
@@ -1400,14 +1359,9 @@ export function Editor({
       TaskItem.configure({
         nested: true,
       }),
-      TableKit.configure({
-        table: {
-          resizable: false,
-          HTMLAttributes: {
-            class: "not-prose",
-          },
-        },
-      }),
+      TableKit.configure({ table: false }),
+      ResizableTable,
+      TableWidths,
       Frontmatter,
       Markdown.configure({}),
       SearchHighlight.configure({
@@ -1570,14 +1524,35 @@ export function Editor({
     },
     // Prevent flash of unstyled content during initial render
     immediatelyRender: false,
+    // Tiptap's base styles live in App.css, without the rules that restyle the whole note
+    injectCSS: false,
   });
 
   // Track which note's content is currently loaded in the editor
   const loadedNoteIdRef = useRef<string | null>(null);
   // Track the modified timestamp of the loaded content
   const loadedModifiedRef = useRef<number | null>(null);
-  // Track the last save (note ID and content) to detect our own saves vs external changes
-  const lastSaveRef = useRef<{ noteId: string; content: string } | null>(null);
+  // Markdown matching the editor's document as of its last load or save
+  const loadedContentRef = useRef<string | null>(null);
+  // Documents of recently left notes, reused when switching back unless the file changed since
+  const docCacheRef = useRef<Map<string, { content: string; doc: ProseMirrorNode }>>(
+    new Map(),
+  );
+
+  // Remember where the loaded note was left (scroll offset and selection)
+  const rememberPosition = useCallback(() => {
+    const noteId = loadedNoteIdRef.current;
+    const container = scrollContainerRef.current;
+    const instance = editorRef.current;
+    if (isPreview || sourceModeRef.current || !noteId || !container || !instance) {
+      return;
+    }
+    const { from, to } = instance.state.selection;
+    setNotePosition(noteId, { scrollTop: container.scrollTop, from, to });
+  }, [isPreview]);
+
+  // Layout cleanup runs before the scroll container's ref is detached
+  useLayoutEffect(() => rememberPosition, [rememberPosition]);
   // Pull in edits made to the open note outside the app, unless there are unsaved edits
   useEffect(() => {
     if (previewMode || !hasExternalChanges || needsSaveRef.current) return;
@@ -1758,29 +1733,30 @@ export function Editor({
 
     const isSameNote = currentNote.id === loadedNoteIdRef.current;
 
-    // Detect rename BEFORE flush to prevent stale-ID saves from creating duplicates.
-    // When a save renames the file (title changed), the ID changes but we're still
-    // editing the same note. Update loadedNoteIdRef first so any flush uses the new ID.
-    if (!isSameNote) {
-      const lastSave = lastSaveRef.current;
-      if (
-        lastSave?.noteId === loadedNoteIdRef.current &&
-        lastSave?.content === currentNote.content
-      ) {
-        loadedNoteIdRef.current = currentNote.id;
-        loadedModifiedRef.current = currentNote.modified;
-        lastSaveRef.current = null;
-        // If user typed during the rename, flush with the now-correct ID
-        if (needsSaveRef.current) {
-          flushPendingSave();
-        }
-        return;
-      }
+    // A rename changes the ID of the note being edited: keep the editor as is.
+    // Pending saves read loadedNoteIdRef when they fire, so they follow the new ID.
+    if (
+      !isSameNote &&
+      loadedNoteIdRef.current &&
+      resolveNoteId?.(loadedNoteIdRef.current) === currentNote.id
+    ) {
+      loadedNoteIdRef.current = currentNote.id;
+      loadedModifiedRef.current = currentNote.modified;
+      return;
     }
 
-    // Flush any pending save before switching to a different note
-    if (!isSameNote && needsSaveRef.current) {
-      flushPendingSave();
+    // Flush any pending save before switching to a different note, then keep the
+    // document so switching back skips parsing when the file is unchanged
+    if (!isSameNote) {
+      if (needsSaveRef.current) flushPendingSave();
+      const leftId = loadedNoteIdRef.current;
+      const leftContent = loadedContentRef.current;
+      if (leftId && leftContent !== null && !sourceModeRef.current) {
+        const cache = docCacheRef.current;
+        cache.delete(leftId);
+        cache.set(leftId, { content: leftContent, doc: editor.state.doc });
+        if (cache.size > DOC_CACHE_SIZE) cache.delete(cache.keys().next().value!);
+      }
     }
     // Reset source mode when genuinely switching notes (renames return early above)
     if (!isSameNote) {
@@ -1798,6 +1774,7 @@ export function Editor({
         // Manual reload - update the editor content
         lastReloadVersionRef.current = reloadVersion;
         loadedModifiedRef.current = currentNote.modified;
+        loadedContentRef.current = currentNote.content;
         const { from, to } = editor.state.selection;
         isLoadingRef.current = true;
         const manager = editor.storage.markdown?.manager;
@@ -1827,18 +1804,31 @@ export function Editor({
     const isNewNote = loadedNoteIdRef.current === null;
     const wasEmpty = !isNewNote && currentNote.content?.trim() === "";
     const loadingNoteId = currentNote.id;
+    const position = isPreview ? null : getNotePosition(loadingNoteId);
+    const scrollTop = position?.scrollTop ?? 0;
+
+    rememberPosition();
+    setNameBarVisible(false);
 
     loadedNoteIdRef.current = loadingNoteId;
     loadedModifiedRef.current = currentNote.modified;
+    loadedContentRef.current = currentNote.content;
 
     isLoadingRef.current = true;
 
     // Blur editor before setting content to prevent ghost cursor
     editor.commands.blur();
 
-    // Parse markdown and set content
+    // Reuse the cached document when the file is unchanged, else parse the markdown
+    const cached = docCacheRef.current.get(loadingNoteId);
     const manager = editor.storage.markdown?.manager;
-    if (manager) {
+    if (
+      cached &&
+      cached.content === currentNote.content &&
+      cached.doc.type.schema === editor.schema
+    ) {
+      editor.commands.setContent(cached.doc);
+    } else if (manager) {
       try {
         const parsed = manager.parse(currentNote.content);
         editor.commands.setContent(parsed);
@@ -1850,8 +1840,16 @@ export function Editor({
       editor.commands.setContent(currentNote.content);
     }
 
-    // Scroll to top after content is set (must be after setContent to work reliably)
-    scrollContainerRef.current?.scrollTo(0, 0);
+    if (position) {
+      const docEnd = editor.state.doc.content.size;
+      editor.commands.setTextSelection({
+        from: Math.min(position.from, docEnd),
+        to: Math.min(position.to, docEnd),
+      });
+    }
+
+    // Restore the scroll offset after content is set (must be after setContent to work reliably)
+    scrollContainerRef.current?.scrollTo(0, scrollTop);
 
     // Capture note ID to check in RAF callback - prevents race condition
     // if user switches notes quickly before RAF fires
@@ -1862,14 +1860,14 @@ export function Editor({
       }
 
       // Scroll again in RAF to ensure it takes effect after DOM updates
-      scrollContainerRef.current?.scrollTo(0, 0);
+      scrollContainerRef.current?.scrollTo(0, scrollTop);
 
       isLoadingRef.current = false;
 
+      // New notes start by naming the file
       if (consumePendingNewNote?.(loadingNoteId)) {
-        if (!focusAndSelectTitle(editor)) {
-          editor.commands.focus("start");
-        }
+        setNameBarVisible(true);
+        setNameFocusRequest((n) => n + 1);
         return;
       }
 
@@ -1891,11 +1889,46 @@ export function Editor({
     flushPendingSave,
     reloadVersion,
     consumePendingNewNote,
+    resolveNoteId,
+    rememberPosition,
+    isPreview,
   ]);
 
-  // Scroll to top on mount (e.g., when returning from settings)
-  useEffect(() => {
-    scrollContainerRef.current?.scrollTo(0, 0);
+  // Scrolling up reveals the filename bar only from the top of the note, in a gesture that
+  // started there, so momentum from a long scroll up that reaches the top doesn't count
+  const lastWheelAtRef = useRef(0);
+  const gestureFromTopRef = useRef(false);
+  const handleEditorWheel = useCallback((e: React.WheelEvent) => {
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    const atTop = (scrollContainerRef.current?.scrollTop ?? 0) <= 0;
+    if (e.timeStamp - lastWheelAtRef.current > 200) {
+      gestureFromTopRef.current = atTop;
+    }
+    lastWheelAtRef.current = e.timeStamp;
+
+    if (e.deltaY < 0) {
+      if (atTop && gestureFromTopRef.current && !nameBarVisibleRef.current) {
+        setNameBarVisible(true);
+      }
+    } else if (
+      nameBarVisibleRef.current &&
+      !nameBarRef.current?.contains(document.activeElement)
+    ) {
+      // Scrolling down hides it, unless its field is being edited
+      setNameBarVisible(false);
+    }
+  }, []);
+
+  const handleRename = useCallback(
+    async (name: string) => {
+      const noteId = loadedNoteIdRef.current;
+      if (noteId && renameNote) await renameNote(noteId, name);
+    },
+    [renameNote],
+  );
+
+  const handleNameDone = useCallback(() => {
+    editorRef.current?.commands.focus();
   }, []);
 
   // Cleanup on unmount - flush pending saves
@@ -1912,7 +1945,7 @@ export function Editor({
           ? manager.serialize(editorRef.current.getJSON())
           : editorRef.current.getText();
         // Fire and forget - save will complete in background
-        saveNote(markdown);
+        if (loadedNoteIdRef.current) saveNote(markdown, loadedNoteIdRef.current);
       }
       if (linkPopupRef.current) {
         linkPopupRef.current.destroy();
@@ -2191,7 +2224,8 @@ export function Editor({
       setSearchQuery("");
       setReplaceQuery("");
       setIsReplaceOpen(false);
-      setSearchMatches([]);
+      // Keep the same array when already empty, so switching notes doesn't re-render
+      setSearchMatches((prev) => (prev.length ? [] : prev));
       setCurrentMatchIndex(0);
       // Clear decorations
       if (editor) {
@@ -2444,11 +2478,11 @@ export function Editor({
         clearTimeout(sourceTimeoutRef.current);
       }
       sourceTimeoutRef.current = window.setTimeout(async () => {
-        if (currentNote) {
+        const noteId = loadedNoteIdRef.current;
+        if (noteId) {
           setIsSaving(true);
           try {
-            lastSaveRef.current = { noteId: currentNote.id, content: value };
-            await saveNote(value, currentNote.id);
+            await saveNote(value, noteId);
           } catch (error) {
             console.error("Failed to save note:", error);
             toast.error("Failed to save note");
@@ -2458,7 +2492,7 @@ export function Editor({
         }
       }, 300);
     },
-    [currentNote, saveNote],
+    [saveNote],
   );
 
   if (!currentNote) {
@@ -2532,7 +2566,7 @@ export function Editor({
             </p>
             {createNote && (
               <Button
-                onClick={createNote}
+                onClick={() => createNote()}
                 variant="secondary"
                 size="md"
                 className="mt-4"
@@ -2576,13 +2610,25 @@ export function Editor({
               <PanelLeftIcon className="w-4.5 h-4.5 stroke-[1.5]" />
             </IconButton>
           )}
-          <span className="text-xs text-text-muted mb-px truncate">
-            {formatDateTime(currentNote.modified)}
-          </span>
+          {showTabs ? (
+            <TabBar />
+          ) : (
+            <span className="text-xs text-text-muted mb-px truncate">
+              {formatDateTime(currentNote.modified)}
+            </span>
+          )}
         </div>
         <div
           className={`titlebar-no-drag flex items-center gap-px shrink-0 transition-opacity duration-400 ${needsSidebarDelay ? "delay-200" : ""} ${focusMode ? "opacity-0 pointer-events-none" : "opacity-100"}`}
         >
+          {editor && (
+            <LineCounter
+              editor={editor}
+              sourceMode={sourceMode}
+              sourceContent={sourceContent}
+              sourceTextareaRef={sourceTextareaRef}
+            />
+          )}
           {hasExternalChanges ? (
             <Tooltip
               content={`External changes detected (${mod}${isMac ? "" : "+"}R to refresh)`}
@@ -2768,6 +2814,29 @@ export function Editor({
         />
       </div>
 
+      {/* Section path sits above the content; the filename bar slides over it. The clip stops that
+          slide at the top edge (it would otherwise pass over the format bar) but leaves the
+          bottom open for the headings dropdown. */}
+      <div className="relative z-20 [clip-path:inset(0_-1rem_-100vh_-1rem)]">
+        {editor && !sourceMode && !focusMode && !previewMode && (
+          <SectionPath
+            editor={editor}
+            scrollContainerRef={scrollContainerRef}
+            hidden={nameBarVisible}
+          />
+        )}
+        {!previewMode && (
+          <NoteNameBar
+            ref={nameBarRef}
+            noteId={currentNote.id}
+            visible={nameBarVisible}
+            focusRequest={nameFocusRequest}
+            onRename={handleRename}
+            onDone={handleNameDone}
+          />
+        )}
+      </div>
+
       {/* Editor content area with resize handles overlay */}
       <div data-editor-content-area className="flex-1 relative overflow-hidden">
         {!focusMode && !sourceMode && (
@@ -2776,26 +2845,31 @@ export function Editor({
         <div
           data-editor-scroll
           ref={scrollContainerRef}
-          className="absolute inset-0 overflow-y-auto overflow-x-hidden"
+          className={`absolute inset-0 overflow-y-auto overflow-x-hidden ${lineNumbersVisible ? `line-numbers line-numbers-${lineNumbers}` : ""}`}
           dir={textDirection}
+          onWheel={handleEditorWheel}
         >
           {sourceMode ? (
             /* Markdown source textarea */
-            <div className="h-full">
+            <div
+              className="relative h-full mx-auto"
+              style={{ maxWidth: "var(--editor-max-width, 48rem)" }}
+            >
+              {lineNumbersVisible && (
+                <SourceLineNumbers
+                  textareaRef={sourceTextareaRef}
+                  lineCount={sourceContent.split("\n").length}
+                  textStyle={SOURCE_TEXT_STYLE}
+                />
+              )}
               <textarea
+                ref={sourceTextareaRef}
                 value={sourceContent}
                 onChange={(e) => handleSourceChange(e.target.value)}
                 wrap="off"
                 dir={textDirection}
-                className="w-full h-full bg-transparent text-text focus:outline-none resize-none px-6 pt-8 pb-24 mx-auto block"
-                style={{
-                  maxWidth: "var(--editor-max-width, 48rem)",
-                  fontFamily:
-                    "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, 'Courier New', monospace",
-                  fontSize: "0.875em",
-                  lineHeight: "var(--editor-line-height)",
-                  tabSize: 2,
-                }}
+                className="source-textarea w-full h-full bg-transparent text-text focus:outline-none resize-none px-6 pt-8 pb-24 block"
+                style={{ ...SOURCE_TEXT_STYLE, tabSize: 2 }}
                 spellCheck={false}
               />
             </div>
@@ -3018,13 +3092,6 @@ export function Editor({
             </>
           )}
         </div>
-        {editor && !sourceMode && !focusMode && (
-          <HeadingIndicator
-            editor={editor}
-            scrollContainerRef={scrollContainerRef}
-            mode={headingIndicator}
-          />
-        )}
       </div>
     </div>
   );

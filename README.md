@@ -7,14 +7,17 @@
 >
 > - **Alphabetical notes in folders** - Notes inside folders are sorted A–Z (pinned notes stay on top; root-level notes keep newest-first order)
 > - **Sidebar hover reveal** - When the sidebar is hidden, resting the pointer near the left edge of the note editor reveals it, just like the toggle button would. It hides again once the pointer moves away, with a short dwell time so quick movements out of the window don't trigger it
-> - **Heading indicator** - A heading indicator on the right edge of the editor shows an outline number for each heading (`1`, `1.1`, `1.2`, `1.2.1`, ...), with the current heading highlighted. H1 headings have no number and are marked with a plain line. It follows the cursor after clicks or typing and the scroll position when scrolling, and fades out before it would overlap the text. Two views, selectable in Settings → Appearance:
->   - **Focused** - Vertically centered, the current heading and its 3 neighbors on each side
->   - **Full Outline** - Top-aligned, all headings, auto-scrolling when they don't fit
+> - **Section path** - A bar above the note shows where you are as a breadcrumb of headings (`My big title / the story`), following the cursor after clicks or typing and the scroll position when scrolling. When it doesn't fit, the enclosing headings shorten first so the current one stays whole. A thin line along the bottom of the bar shows how far through the note you've read. Click the bar to expand an animated tree of all headings across the window and jump to one (Esc or a click elsewhere closes it). It replaces the heading indicator on the right edge and its setting. Hidden in source, focus and preview mode and in notes without headings
 > - **Callouts** - Turn a passage into a colored callout from the toolbar or the `/` menu: Note, Info, Tip, Important, Definition, Example, Question, Summary, Exam, Warning, Caution, and Plain (gray, without a title). Saved as GitHub-style `> [!NOTE]` blockquotes, so they render as alerts on GitHub and as plain quotes elsewhere
-> - **Inline math** - Type `$x^2$` to render inline KaTeX math; click it to edit. Follows the Pandoc rule (no space just inside the `$` signs, no digit right after the closing one), so prices like `$5 and $10` stay plain text
+> - **Inline math** - Typing `$` (or the Inline Math toolbar button) opens a popup that renders the formula live at the cursor as you type; press Space on the empty field for a literal `$`. Click inline math to edit it the same way. In saved notes `$x^2$` is inline math following the Pandoc rule (no space just inside the `$` signs, no digit right after the closing one), so prices like `$5 and $10` stay plain text
 > - **Highlights** - Highlight text in yellow, green, blue, pink, or gray from the toolbar (`Cmd+Shift+H` for yellow). Yellow is saved as `==text==`, other colors as `<mark data-color="...">`
 > - **Live reload of external edits** - When the open note changes on disk (e.g. edited by another app or an AI agent), it reloads automatically, keeping the cursor position. If you have unsaved edits, the Refresh button appears instead
+> - **Filenames independent of content** - A note's filename is its title and no longer follows its first line. Rename a note from its right-click menu in the sidebar, or scroll up once more while at the top of a note to reveal the filename bar (`filename: <name>.md`, without the folder) over the section path (it stays until you scroll down). New notes open with the filename field focused
+> - **Remembered positions** - Switching back to a note restores its scroll position and cursor. Positions are kept for 12 hours after you last left a note
+> - **Tabs and windows** - Open a note in a new tab or window from its right-click menu (middle-click also opens a new tab). Clicking a note in the sidebar still replaces the current note, so the tab bar only shows up in the title bar once two or more tabs are open. `Cmd+T` new tab, `Cmd+W` closes the tab (or the window on the last one), `Ctrl+Tab` / `Ctrl+Shift+Tab` switch tabs, `Cmd+Shift+N` new window. Each tab returns to where you left it, and renames carry over to other windows
 > - **Lower energy use** - The search index no longer writes to disk on every autosave or polls in the background, refreshing the note list only re-reads changed files, and typing no longer re-renders the whole editor
+> - **Responsive with large notes** - Toolbar actions, math popups, menus, tooltips and the sidebar animation no longer stall when a long note is open, and switching back to a recently opened note skips re-parsing it
+> - **Quieter toolbar** - The heading and list buttons are gone from the toolbar (use `Cmd+Alt+1`–`4`, `Cmd+Shift+7` / `8` or the `/` menu), and toolbar tooltips only appear after hovering for 2 seconds
 
 <img src="docs/app-icon.png" alt="Scratch" width="128" height="128" style="border-radius: 22px; margin-bottom: 8px;">
 
@@ -33,13 +36,20 @@ A minimalist, offline-first markdown note-taking app for macOS, Windows, and Lin
 - **Markdown source mode** - Toggle to view and edit raw markdown (`Cmd+Shift+M`)
 - **Syntax highlighting** - 20 languages with GitHub-inspired color scheme
 - **Mermaid diagrams** - Render flowcharts, sequence diagrams, and more in fenced code blocks
-- **KaTeX math** - Render inline `$...$` and block `$$...$$` math equations
+- **KaTeX math** - Inline `$...$` and block `$$...$$` math, edited in a popup with live preview (type `$` for inline math)
+- **Callouts and highlights** - Colored GitHub-style callouts and multi-color text highlights
+- **Resizable table columns** - Drag a column edge to set its width, saved in the note as a hidden comment
 - **Wikilinks** - Type `[[` to link between notes with autocomplete
 - **Slash commands** - Type `/` to quickly insert headings, lists, code blocks, diagrams, and more
 - **Focus mode** - Distraction-free writing with animated sidebar/toolbar fade (`Cmd+Shift+Enter`)
 - **Edit with Claude Code, OpenAI Codex, OpenCode, or Ollama** - Use your local CLI to edit notes with AI (including fully offline via Ollama)
 - **Works with other AI agents** - Picks up external file changes automatically
 - **Folders** - Opt-in collapsible folder tree with drag-and-drop to organize notes
+- **Tabs and windows** - Open notes in tabs or in separate windows
+- **Remembered positions** - Each note reopens at the scroll position and cursor where you left it, for 12 hours after you last left it
+- **Filenames you control** - A note's filename is its title and never changes with its content; rename from the sidebar or the filename bar above the note
+- **Section path** - A breadcrumb of the current heading above the note with a reading progress line, expandable to the full heading tree
+- **Line numbers** - Optional, unobtrusive line numbers in the editor and in markdown source, plus a current line counter in the top bar
 - **Keyboard optimized** - Lots of shortcuts and a command palette
 - **Customizable** - Theme, typography, page width, and RTL text direction
 - **Git integration** - Optional version control with push/pull for multi-device sync
@@ -95,6 +105,11 @@ Scratch is designed to be usable without a mouse. Here are the essentials to get
 | Shortcut          | Action                 |
 | ----------------- | ---------------------- |
 | `Cmd+N`           | New note               |
+| `Cmd+T`           | New note in a new tab  |
+| `Cmd+W`           | Close tab / window     |
+| `Ctrl+Tab`        | Next tab               |
+| `Ctrl+Shift+Tab`  | Previous tab           |
+| `Cmd+Shift+N`     | New window             |
 | `Cmd+D`           | Duplicate note         |
 | `Delete`          | Delete note            |
 | `Cmd+Backspace`   | Delete note            |
@@ -110,6 +125,8 @@ Scratch is designed to be usable without a mouse. Here are the essentials to get
 | `Cmd+\`           | Toggle sidebar         |
 | `Cmd+B/I`         | Bold/Italic            |
 | `Cmd+Shift+H`     | Highlight              |
+| `Cmd+Alt+1`–`4`   | Heading 1–4            |
+| `Cmd+Shift+7/8`   | Numbered/Bullet list   |
 | `Cmd+=/-/0`       | Zoom in/out/reset      |
 | `↑/↓`             | Navigate notes         |
 

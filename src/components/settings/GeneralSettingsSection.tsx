@@ -243,7 +243,7 @@ export function GeneralSettingsSection() {
   };
 
   return (
-    <div className="space-y-8 py-8">
+    <div className="stack-y-8 py-8">
       {/* Folder Location */}
       <section className="pb-2">
         <h2 className="text-xl font-medium mb-0.5">Folder Location</h2>
@@ -371,7 +371,7 @@ export function GeneralSettingsSection() {
           </div>
         ) : (
           <>
-            <div className="rounded-[10px] border border-border p-4 space-y-2.5">
+            <div className="rounded-[10px] border border-border p-4 stack-y-2.5">
               {/* Branch status */}
               <div className="flex items-center justify-between">
                 <span className="text-sm text-text font-medium">Status</span>
@@ -386,7 +386,7 @@ export function GeneralSettingsSection() {
               {status.hasRemote ? (
                 <>
                   {isEditingRemote ? (
-                    <div className="space-y-2">
+                    <div className="stack-y-2">
                       <span className="text-sm text-text font-medium">
                         Remote
                       </span>
@@ -490,7 +490,7 @@ export function GeneralSettingsSection() {
                     </div>
                   ) : (
                     status.currentBranch && (
-                      <div className="pt-3 border-t border-border border-dashed space-y-0.5">
+                      <div className="pt-3 border-t border-border border-dashed stack-y-0.5">
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-text font-medium">
                             Tracking
@@ -523,7 +523,7 @@ export function GeneralSettingsSection() {
                   )}
                 </>
               ) : (
-                <div className="pt-3 border-t border-border border-dashed space-y-2.5">
+                <div className="pt-3 border-t border-border border-dashed stack-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-text font-medium">
                       Remote
@@ -534,7 +534,7 @@ export function GeneralSettingsSection() {
                   </div>
 
                   {showRemoteInput ? (
-                    <div className="space-y-2">
+                    <div className="stack-y-2">
                       <Input
                         type="text"
                         value={remoteUrl}
@@ -678,7 +678,7 @@ export function GeneralSettingsSection() {
           Customize the default name when creating a new note
         </p>
 
-        <div className="space-y-2">
+        <div className="stack-y-2">
           <div>
             <Input
               type="text"
@@ -698,7 +698,7 @@ export function GeneralSettingsSection() {
               <ChevronRightIcon className="w-3.5 h-3.5 stroke-2 transition-transform [[open]>&]:rotate-90" />
               Add template tags to your name
             </summary>
-            <div className="mt-2 space-y-1.5 pl-2 text-text-muted">
+            <div className="mt-2 stack-y-1.5 pl-2 text-text-muted">
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-xs">
                 <code>{"{timestamp}"}</code>
                 <span>1739586000</span>
@@ -898,7 +898,7 @@ function IgnoredFoldersEditor() {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="stack-y-3">
       <div className="flex flex-wrap gap-1.5">
         {patterns.map((pattern) => (
           <span
@@ -964,9 +964,9 @@ function IgnoredFoldersEditor() {
 
 function RemoteInstructions() {
   return (
-    <div className="text-sm text-text-muted space-y-1.5 pt-2 pb-1.5">
+    <div className="text-sm text-text-muted stack-y-1.5 pt-2 pb-1.5">
       <p className="font-medium">To get your remote URL:</p>
-      <ol className="list-decimal list-inside space-y-0.5 pl-1">
+      <ol className="list-decimal list-inside stack-y-0.5 pl-1">
         <li>Create a repository on GitHub, GitLab, etc.</li>
         <li>Copy the repository URL (HTTPS or SSH)</li>
         <li>Click "Add Remote" and paste the URL</li>

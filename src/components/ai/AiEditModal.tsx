@@ -195,7 +195,7 @@ export function AiEditModal({
         </div>
 
         {/* Instructions */}
-        <div className="p-4.5 space-y-3">
+        <div className="p-4.5 stack-y-3">
           {isExecuting ? (
             <div className="flex items-center gap-2 text-sm text-text-muted">
               <SpinnerIcon className="w-4 h-4 animate-spin" />
@@ -203,7 +203,7 @@ export function AiEditModal({
             </div>
           ) : cliInstalled === false ? (
             <>
-              <div className="text-sm space-y-0.5 p-3 bg-orange-500/10 rounded-md ">
+              <div className="text-sm stack-y-0.5 p-3 bg-orange-500/10 rounded-md ">
                 <div className="font-medium text-orange-700 dark:text-orange-400">
                   {cliName} Not Found
                 </div>
@@ -237,7 +237,7 @@ export function AiEditModal({
           ) : (
             <>
               {provider === "ollama" && (
-                <div className="space-y-1.5">
+                <div className="stack-y-1.5">
                   <div className="flex items-center gap-2 text-sm">
                     <span className="text-text-muted shrink-0">
                       Ollama model:
@@ -258,7 +258,7 @@ export function AiEditModal({
                   </div>
                 </div>
               )}
-              <div className="text-sm space-y-1 p-3 bg-bg-muted rounded-md">
+              <div className="text-sm stack-y-1 p-3 bg-bg-muted rounded-md">
                 <span className="font-medium text-text">How does it work?</span>{" "}
                 <span className="text-text-muted">
                   {providerName} will edit the current note directly using your

@@ -4,13 +4,13 @@ use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
 use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy};
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow};
 use tauri::webview::WebviewWindowBuilder;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tokio::fs;
@@ -122,12 +122,11 @@ pub struct Settings {
     pub interface_zoom: Option<f32>,
     #[serde(rename = "customEditorWidthPx")]
     pub custom_editor_width_px: Option<u32>,
+    #[serde(rename = "lineNumbers")]
+    pub line_numbers: Option<String>,
     /// Custom sidebar width in px; `None` means the default width is used.
     #[serde(rename = "sidebarWidthPx")]
     pub sidebar_width_px: Option<u32>,
-    /// Heading indicator view: "focused" (default) or "outline".
-    #[serde(rename = "headingIndicator")]
-    pub heading_indicator: Option<String>,
     #[serde(rename = "ollamaModel")]
     pub ollama_model: Option<String>,
     #[serde(rename = "foldersEnabled")]
@@ -219,7 +218,7 @@ impl SearchIndex {
         })
     }
 
-    fn index_note(&self, id: &str, title: &str, content: &str, modified: i64) -> Result<()> {
+    fn index_note(&self, id: &str, content: &str, modified: i64) -> Result<()> {
         let writer = self.writer.lock().expect("search writer mutex");
 
         // Delete existing document with this ID
@@ -229,7 +228,7 @@ impl SearchIndex {
         // Add new document
         writer.add_document(doc!(
             self.id_field => id,
-            self.title_field => title,
+            self.title_field => note_title(id),
             self.content_field => content,
             self.modified_field => modified,
         ))?;
@@ -334,11 +333,9 @@ impl SearchIndex {
                             .map(|d| d.as_secs() as i64)
                             .unwrap_or(0);
 
-                        let title = extract_title(&content);
-
                         writer.add_document(doc!(
                             self.id_field => id.as_str(),
-                            self.title_field => title,
+                            self.title_field => note_title(&id),
                             self.content_field => content.as_str(),
                             self.modified_field => modified,
                         ))?;
@@ -354,11 +351,10 @@ impl SearchIndex {
     }
 }
 
-// Title and preview of a listed file, reused by list_notes while the file is unchanged
+// Preview of a listed file, reused by list_notes while the file is unchanged
 pub struct ListedFile {
     modified: Option<std::time::SystemTime>,
     len: u64,
-    title: String,
     preview: String,
 }
 
@@ -451,26 +447,9 @@ fn expand_note_name_template(template: &str) -> String {
     result
 }
 
-/// Extracts a display title from a note ID (filename)
-fn extract_title_from_id(id: &str) -> String {
-    // Get last path component (filename)
-    let filename = id.rsplit('/').next().unwrap_or(id);
-
-    // Convert to display title (replace dashes/underscores with spaces)
-    let title = filename.replace(['-', '_'], " ");
-
-    // Title case
-    title
-        .split_whitespace()
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(first) => first.to_uppercase().to_string() + chars.as_str(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+/// A note's display title is its filename (last ID component, without extension)
+fn note_title(id: &str) -> String {
+    id.rsplit('/').next().unwrap_or(id).to_string()
 }
 
 // Utility: Check if a string is effectively empty
@@ -498,31 +477,12 @@ fn strip_frontmatter(content: &str) -> &str {
     content
 }
 
-// Utility: Extract title from markdown content
-fn extract_title(content: &str) -> String {
-    let body = strip_frontmatter(content);
-    for line in body.lines() {
-        let trimmed = line.trim();
-        if let Some(title) = trimmed.strip_prefix("# ") {
-            let title = title.trim();
-            if !is_effectively_empty(title) {
-                return title.to_string();
-            }
-        }
-        if !is_effectively_empty(trimmed) {
-            return trimmed.chars().take(50).collect();
-        }
-    }
-    "Untitled".to_string()
-}
-
 // Utility: Generate preview from content (strip markdown formatting)
 fn generate_preview(content: &str) -> String {
     let body = strip_frontmatter(content);
-    // Skip the first line (title), find first non-empty line
-    for line in body.lines().skip(1) {
+    for line in body.lines() {
         let trimmed = line.trim();
-        if !trimmed.is_empty() {
+        if !trimmed.is_empty() && !trimmed.starts_with("<!-- table-widths:") {
             let stripped = strip_markdown(trimmed);
             if !stripped.is_empty() {
                 return stripped.chars().take(100).collect();
@@ -964,7 +924,6 @@ async fn list_notes(state: State<'_, AppState>) -> Result<Vec<NoteMetadata>, Str
                     ListedFile {
                         modified: file_modified,
                         len: metadata.len(),
-                        title: extract_title(&content),
                         preview: generate_preview(&content),
                     }
                 }
@@ -973,7 +932,7 @@ async fn list_notes(state: State<'_, AppState>) -> Result<Vec<NoteMetadata>, Str
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0);
-            results.push((id, file.title.clone(), file.preview.clone(), modified));
+            results.push((note_title(&id), id, file.preview.clone(), modified));
             listed.insert(file_path.to_path_buf(), file);
         }
         (results, listed)
@@ -984,7 +943,7 @@ async fn list_notes(state: State<'_, AppState>) -> Result<Vec<NoteMetadata>, Str
 
     let mut notes: Vec<NoteMetadata> = discovered
         .into_iter()
-        .map(|(id, title, preview, modified)| NoteMetadata {
+        .map(|(title, id, preview, modified)| NoteMetadata {
             id,
             title,
             preview,
@@ -1057,8 +1016,8 @@ async fn read_note(id: String, state: State<'_, AppState>) -> Result<Note, Strin
         .unwrap_or(0);
 
     Ok(Note {
+        title: note_title(&id),
         id,
-        title: extract_title(&content),
         content,
         path: file_path.to_string_lossy().into_owned(),
         modified,
@@ -1067,7 +1026,7 @@ async fn read_note(id: String, state: State<'_, AppState>) -> Result<Note, Strin
 
 #[tauri::command]
 async fn save_note(
-    id: Option<String>,
+    id: String,
     content: String,
     state: State<'_, AppState>,
 ) -> Result<Note, String> {
@@ -1078,73 +1037,11 @@ async fn save_note(
             .clone()
             .ok_or("Notes folder not set")?
     };
-    let folder_path = PathBuf::from(&folder);
+    let file_path = abs_path_from_id(&PathBuf::from(&folder), &id)?;
 
-    let title = extract_title(&content);
-    let sanitized_leaf = sanitize_filename(&title);
-
-    // Determine the file ID and path, handling renames
-    let (final_id, file_path, old_id) = if let Some(existing_id) = id {
-        // Preserve directory prefix for notes in subfolders
-        let (dir_prefix, desired_id) = if let Some(pos) = existing_id.rfind('/') {
-            let prefix = &existing_id[..pos];
-            (Some(prefix.to_string()), format!("{}/{}", prefix, sanitized_leaf))
-        } else {
-            (None, sanitized_leaf.clone())
-        };
-
-        let old_file_path = abs_path_from_id(&folder_path, &existing_id)?;
-
-        if existing_id != desired_id {
-            let mut new_id = desired_id.clone();
-            let mut counter = 1;
-
-            while new_id != existing_id
-                && abs_path_from_id(&folder_path, &new_id)
-                    .map(|p| p.exists())
-                    .unwrap_or(false)
-            {
-                new_id = if let Some(ref prefix) = dir_prefix {
-                    format!("{}/{}-{}", prefix, sanitized_leaf, counter)
-                } else {
-                    format!("{}-{}", sanitized_leaf, counter)
-                };
-                counter += 1;
-            }
-
-            let new_file_path = abs_path_from_id(&folder_path, &new_id)?;
-            (new_id, new_file_path, Some((existing_id, old_file_path)))
-        } else {
-            (existing_id, old_file_path, None)
-        }
-    } else {
-        // New notes go in root
-        let mut new_id = sanitized_leaf.clone();
-        let mut counter = 1;
-
-        while abs_path_from_id(&folder_path, &new_id)
-            .map(|p| p.exists())
-            .unwrap_or(false)
-        {
-            new_id = format!("{}-{}", sanitized_leaf, counter);
-            counter += 1;
-        }
-
-        let new_file_path = abs_path_from_id(&folder_path, &new_id)?;
-        (new_id, new_file_path, None)
-    };
-
-    // Write the file to the new path
     fs::write(&file_path, &content)
         .await
         .map_err(|e| e.to_string())?;
-
-    // Delete old file AFTER successful write (to prevent data loss)
-    if let Some((_, ref old_file_path)) = old_id {
-        if old_file_path.exists() && *old_file_path != file_path {
-            let _ = fs::remove_file(old_file_path).await;
-        }
-    }
 
     let metadata = fs::metadata(&file_path)
         .await
@@ -1156,28 +1053,114 @@ async fn save_note(
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
-    // Update search index (delete old entry if renamed, then add new)
     {
         let index = state.search_index.lock().expect("search index mutex");
         if let Some(ref search_index) = *index {
-            if let Some((ref old_id_str, _)) = old_id {
-                let _ = search_index.delete_note(old_id_str);
-            }
-            let _ = search_index.index_note(&final_id, &title, &content, modified);
+            let _ = search_index.index_note(&id, &content, modified);
         }
     }
 
-    // Update cache (remove old entry if renamed)
-    if let Some((ref old_id_str, _)) = old_id {
+    Ok(Note {
+        title: note_title(&id),
+        id,
+        content,
+        path: file_path.to_string_lossy().into_owned(),
+        modified,
+    })
+}
+
+#[tauri::command]
+async fn rename_note(
+    id: String,
+    new_name: String,
+    state: State<'_, AppState>,
+) -> Result<Note, String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config
+            .notes_folder
+            .clone()
+            .ok_or("Notes folder not set")?
+    };
+    let folder_root = PathBuf::from(&folder);
+    let source_path = abs_path_from_id(&folder_root, &id)?;
+    if !source_path.exists() {
+        return Err("Note not found".to_string());
+    }
+
+    // Leading dots would hide the file; a typed ".md" is implied
+    let name = new_name.trim().trim_start_matches('.');
+    let name = name
+        .strip_suffix(".md")
+        .or_else(|| name.strip_suffix(".MD"))
+        .unwrap_or(name);
+    let leaf = sanitize_filename(name);
+    let with_prefix = |leaf: &str| match id.rfind('/') {
+        Some(pos) => format!("{}/{}", &id[..pos], leaf),
+        None => leaf.to_string(),
+    };
+
+    // Pick a free name; a case-only rename on a case-insensitive filesystem resolves to the source itself
+    let source_canonical = source_path.canonicalize().ok();
+    let mut new_id = with_prefix(&leaf);
+    let mut counter = 1;
+    loop {
+        let candidate = abs_path_from_id(&folder_root, &new_id)?;
+        if !candidate.exists() || candidate.canonicalize().ok() == source_canonical {
+            break;
+        }
+        new_id = with_prefix(&format!("{}-{}", leaf, counter));
+        counter += 1;
+    }
+
+    let dest_path = abs_path_from_id(&folder_root, &new_id)?;
+    if new_id != id {
+        fs::rename(&source_path, &dest_path)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        {
+            let mut settings = state.settings.write().expect("settings write lock");
+            if let Some(ref mut pinned) = settings.pinned_note_ids {
+                if let Some(pin_id) = pinned.iter_mut().find(|pin_id| **pin_id == id) {
+                    *pin_id = new_id.clone();
+                    let _ = save_settings(&folder, &settings);
+                }
+            }
+        }
+
         let mut cache = state.notes_cache.write().expect("cache write lock");
-        cache.remove(old_id_str);
+        if let Some(mut meta) = cache.remove(&id) {
+            meta.id = new_id.clone();
+            meta.title = note_title(&new_id);
+            cache.insert(new_id.clone(), meta);
+        }
+    }
+
+    let content = fs::read_to_string(&dest_path)
+        .await
+        .map_err(|e| e.to_string())?;
+    let modified = fs::metadata(&dest_path)
+        .await
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    if new_id != id {
+        let index = state.search_index.lock().expect("search index mutex");
+        if let Some(ref search_index) = *index {
+            let _ = search_index.delete_note(&id);
+            let _ = search_index.index_note(&new_id, &content, modified);
+        }
     }
 
     Ok(Note {
-        id: final_id,
-        title,
+        title: note_title(&new_id),
+        id: new_id,
         content,
-        path: file_path.to_string_lossy().into_owned(),
+        path: dest_path.to_string_lossy().into_owned(),
         modified,
     })
 }
@@ -1278,10 +1261,7 @@ async fn create_note(target_folder: Option<String>, state: State<'_, AppState>) 
         counter += 1;
     }
 
-    // Extract display title from filename
-    let display_title = extract_title_from_id(&final_id);
-
-    let content = format!("# {}\n\n", display_title);
+    let content = String::new();
     let file_path = abs_path_from_id(&folder_path, &final_id)?;
 
     // Create parent directories (for templates like {year}/{month}/{day})
@@ -1304,13 +1284,13 @@ async fn create_note(target_folder: Option<String>, state: State<'_, AppState>) 
     {
         let index = state.search_index.lock().expect("search index mutex");
         if let Some(ref search_index) = *index {
-            let _ = search_index.index_note(&final_id, &display_title, &content, modified);
+            let _ = search_index.index_note(&final_id, &content, modified);
         }
     }
 
     Ok(Note {
+        title: note_title(&final_id),
         id: final_id,
-        title: display_title,
         content,
         path: file_path.to_string_lossy().into_owned(),
         modified,
@@ -1866,6 +1846,13 @@ pub struct FileContent {
     pub modified: i64,
 }
 
+fn file_stem_title(path: &Path) -> String {
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Untitled")
+        .to_string()
+}
+
 /// Validate a file path for preview mode direct file operations.
 /// Ensures the path is a markdown file and resolves symlinks.
 fn validate_preview_path(path: &str) -> Result<PathBuf, String> {
@@ -1907,7 +1894,7 @@ async fn read_file_direct(path: String) -> Result<FileContent, String> {
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
-    let title = extract_title(&content);
+    let title = file_stem_title(&canonical);
 
     Ok(FileContent {
         path,
@@ -1940,7 +1927,7 @@ async fn save_file_direct(path: String, content: String) -> Result<FileContent, 
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
-    let title = extract_title(&content);
+    let title = file_stem_title(&canonical);
 
     Ok(FileContent {
         path,
@@ -1975,18 +1962,7 @@ async fn import_file_to_folder(
         .await
         .map_err(|_| "Failed to read source file".to_string())?;
 
-    // Derive the note ID from the title (H1 heading), falling back to filename
-    let extracted_title = extract_title(&content);
-    let base_name = if extracted_title.trim().is_empty() {
-        source
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("Untitled")
-            .to_string()
-    } else {
-        extracted_title.trim().to_string()
-    };
-    let base_id = sanitize_filename(&base_name);
+    let base_id = sanitize_filename(&file_stem_title(&source));
 
     // Atomically create the file and write content via the handle
     let mut final_id = base_id.clone();
@@ -2024,22 +2000,14 @@ async fn import_file_to_folder(
     {
         let index = state.search_index.lock().expect("search index mutex");
         if let Some(ref search_index) = *index {
-            let _ = search_index.index_note(&final_id, &extracted_title, &content, modified);
+            let _ = search_index.index_note(&final_id, &content, modified);
         }
     }
 
-    let preview = content
-        .lines()
-        .skip(1)
-        .filter(|l| !l.trim().is_empty())
-        .take(3)
-        .collect::<Vec<_>>()
-        .join(" ");
-
     let metadata = NoteMetadata {
+        title: note_title(&final_id),
         id: final_id,
-        title: extracted_title,
-        preview,
+        preview: generate_preview(&content),
         modified,
     };
 
@@ -2049,10 +2017,10 @@ async fn import_file_to_folder(
         cache.insert(metadata.id.clone(), metadata.clone());
     }
 
-    // Tell the main window to select the imported note and focus it
-    let _ = app.emit_to("main", "select-note", &metadata.id);
-    if let Some(main_window) = app.get_webview_window("main") {
-        let _ = main_window.set_focus();
+    // Tell a notes window to select the imported note and focus it
+    if let Some(window) = notes_window(&app) {
+        let _ = app.emit_to(window.label(), "select-note", &metadata.id);
+        let _ = window.set_focus();
     }
 
     Ok(metadata)
@@ -2211,14 +2179,13 @@ fn setup_file_watcher(app: AppHandle, notes_folder: &str) -> Result<FileWatcherS
                                 "created" | "modified" => {
                                     match std::fs::read_to_string(path) {
                                         Ok(content) => {
-                                            let title = extract_title(&content);
                                             let modified = std::fs::metadata(path)
                                                 .ok()
                                                 .and_then(|m| m.modified().ok())
                                                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                                                 .map(|d| d.as_secs() as i64)
                                                 .unwrap_or(0);
-                                            let _ = search_index.index_note(&note_id, &title, &content, modified);
+                                            let _ = search_index.index_note(&note_id, &content, modified);
                                         }
                                         Err(_) => {
                                             // File gone between event and read — treat as deletion
@@ -3551,10 +3518,10 @@ fn try_select_in_notes_folder(app: &AppHandle, path: &Path) -> bool {
         None => return false,
     };
 
-    let _ = app.emit_to("main", "select-note", note_id);
-    if let Some(main_window) = app.get_webview_window("main") {
-        let _ = main_window.show();
-        let _ = main_window.set_focus();
+    if let Some(window) = notes_window(app) {
+        let _ = app.emit_to(window.label(), "select-note", note_id);
+        let _ = window.show();
+        let _ = window.set_focus();
     }
     true
 }
@@ -3568,6 +3535,51 @@ fn is_markdown_extension(path: &Path) -> bool {
             lower == "md" || lower == "markdown"
         })
         .unwrap_or(false)
+}
+
+/// Full notes windows: the startup "main" window plus any opened with open_note_window
+fn is_notes_window(label: &str) -> bool {
+    label == "main" || label.starts_with("note-")
+}
+
+/// The window that receives app-level requests such as "select this note"
+fn notes_window(app: &AppHandle) -> Option<WebviewWindow> {
+    app.get_webview_window("main").or_else(|| {
+        app.webview_windows()
+            .into_iter()
+            .find(|(label, _)| is_notes_window(label))
+            .map(|(_, window)| window)
+    })
+}
+
+static NEXT_NOTE_WINDOW: AtomicUsize = AtomicUsize::new(1);
+
+// Async: building a window inside a sync command deadlocks on Windows
+#[tauri::command]
+async fn open_note_window(app: AppHandle, note_id: Option<String>) -> Result<(), String> {
+    let label = format!("note-{}", NEXT_NOTE_WINDOW.fetch_add(1, Ordering::Relaxed));
+    let url = match note_id {
+        Some(id) => format!("index.html?note={}", urlencoding::encode(&id)),
+        None => "index.html".to_string(),
+    };
+
+    let builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
+        .title("Scratch")
+        .inner_size(1080.0, 720.0)
+        .min_inner_size(600.0, 400.0)
+        .resizable(true)
+        .decorations(true);
+
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(tauri::LogicalPosition::new(16.0, 24.0));
+
+    builder
+        .build()
+        .map_err(|e| format!("Failed to open window: {}", e))?;
+    Ok(())
 }
 
 // Preview mode: create a lightweight window for editing a single file
@@ -3675,18 +3687,18 @@ fn handle_cli_args(app: &AppHandle, args: &[String], cwd: &str) -> bool {
                     eprintln!("Failed to initialize notes folder {:?}: {}", canonical, e);
                 }
             }
-            if let Some(main_window) = app.get_webview_window("main") {
-                let _ = main_window.show();
-                let _ = main_window.set_focus();
+            if let Some(window) = notes_window(app) {
+                let _ = window.show();
+                let _ = window.set_focus();
             }
         }
     }
 
-    // If no files were opened, show and focus the main window
+    // If no files were opened, show and focus a notes window
     if !opened_file {
-        if let Some(main_window) = app.get_webview_window("main") {
-            let _ = main_window.show();
-            let _ = main_window.set_focus();
+        if let Some(window) = notes_window(app) {
+            let _ = window.show();
+            let _ = window.set_focus();
         }
     }
 
@@ -3855,6 +3867,8 @@ pub fn run() {
             list_notes,
             read_note,
             save_note,
+            rename_note,
+            open_note_window,
             delete_note,
             create_note,
             list_folders,
@@ -3995,7 +4009,7 @@ fn set_title_bar_theme(
     #[cfg(target_os = "windows")]
     {
         for (label, window) in app.webview_windows() {
-            if label == "main" || label.starts_with("preview-") {
+            if is_notes_window(&label) || label.starts_with("preview-") {
                 windows_title_bar::apply_title_bar_theme(&window, is_dark, (r, g, b));
             }
         }

@@ -19,8 +19,8 @@ export interface ThemeSettings {
 
 export type FontFamily = "system-sans" | "serif" | "monospace";
 export type TextDirection = "auto" | "ltr" | "rtl";
-export type HeadingIndicatorMode = "focused" | "outline";
 export type EditorWidth = "narrow" | "normal" | "wide" | "full" | "custom";
+export type LineNumbers = "off" | "faint" | "subtle";
 
 export interface EditorFontSettings {
   baseFontFamily?: FontFamily;
@@ -52,10 +52,10 @@ export interface Settings {
   foldersEnabled?: boolean;
   pinnedNoteIds?: string[];
   textDirection?: TextDirection;
+  lineNumbers?: LineNumbers;
   editorWidth?: EditorWidth;
   customEditorWidthPx?: number;
   sidebarWidthPx?: number;
-  headingIndicator?: HeadingIndicatorMode;
   defaultNoteName?: string;
   interfaceZoom?: number;
   ollamaModel?: string;

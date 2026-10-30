@@ -5,7 +5,7 @@ import type {
   FontFamily,
   TextDirection,
   EditorWidth,
-  HeadingIndicatorMode,
+  LineNumbers,
   ThemeColorKey,
 } from "../../types/note";
 import { ChevronRightIcon, EyeIcon, MinusIcon, PlusIcon } from "../icons";
@@ -33,6 +33,13 @@ const textDirectionOptions: { value: TextDirection; label: string }[] = [
   { value: "rtl", label: "RTL" },
 ];
 
+// Line number options
+const lineNumberOptions: { value: LineNumbers; label: string }[] = [
+  { value: "off", label: "Off" },
+  { value: "faint", label: "Faint" },
+  { value: "subtle", label: "Subtle" },
+];
+
 // Page width options
 const editorWidthOptions: { value: EditorWidth; label: string }[] = [
   { value: "narrow", label: "Narrow" },
@@ -40,12 +47,6 @@ const editorWidthOptions: { value: EditorWidth; label: string }[] = [
   { value: "wide", label: "Wide" },
   { value: "full", label: "Full" },
   { value: "custom", label: "Custom" },
-];
-
-// Heading indicator view options
-const headingIndicatorOptions: { value: HeadingIndicatorMode; label: string }[] = [
-  { value: "focused", label: "Focused" },
-  { value: "outline", label: "Full Outline" },
 ];
 
 // Font family options
@@ -73,14 +74,14 @@ export function AppearanceSettingsSection() {
     resetEditorFontSettings,
     textDirection,
     setTextDirection,
+    lineNumbers,
+    setLineNumbers,
     editorWidth,
     setEditorWidth,
     interfaceZoom,
     setInterfaceZoom,
     customEditorWidthPx,
     setCustomEditorWidthPx,
-    headingIndicator,
-    setHeadingIndicator,
     customColorsLight,
     customColorsDark,
     setCustomColor,
@@ -108,8 +109,8 @@ export function AppearanceSettingsSection() {
     editorFontSettings.boldWeight !== 600 ||
     editorFontSettings.lineHeight !== 1.6 ||
     textDirection !== "auto" ||
+    lineNumbers !== "off" ||
     editorWidth !== "normal" ||
-    headingIndicator !== "focused" ||
     Math.round(interfaceZoom * 100) !== 100;
 
   // Filter weight options based on font family
@@ -128,7 +129,7 @@ export function AppearanceSettingsSection() {
   };
 
   return (
-    <div className="space-y-8 py-8">
+    <div className="stack-y-8 py-8">
       {/* Theme Section */}
       <section className="pb-2">
         <h2 className="text-xl font-medium mb-3">Theme</h2>
@@ -153,7 +154,7 @@ export function AppearanceSettingsSection() {
 
         {/* Customize Colors */}
         {theme === "system" ? (
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 stack-y-2">
             <ColorsExpandable
               label="Customize light colors"
               mode="light"
@@ -200,7 +201,7 @@ export function AppearanceSettingsSection() {
           )}
         </div>
 
-        <div className="rounded-[10px] border border-border pl-4 py-3 pr-3 space-y-2">
+        <div className="rounded-[10px] border border-border pl-4 py-3 pr-3 stack-y-2">
           {/* Font Family */}
           <div className="flex items-center justify-between">
             <label className="text-sm text-text font-medium">Font</label>
@@ -292,19 +293,17 @@ export function AppearanceSettingsSection() {
             </Select>
           </div>
 
-          {/* Heading Indicator */}
+          {/* Line Numbers */}
           <div className="flex items-center justify-between">
             <label className="text-sm text-text font-medium">
-              Heading Indicator
+              Line Numbers
             </label>
             <Select
-              value={headingIndicator}
-              onChange={(e) =>
-                setHeadingIndicator(e.target.value as HeadingIndicatorMode)
-              }
+              value={lineNumbers}
+              onChange={(e) => setLineNumbers(e.target.value as LineNumbers)}
               className="w-40"
             >
-              {headingIndicatorOptions.map((opt) => (
+              {lineNumberOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
@@ -536,7 +535,7 @@ function ColorsExpandable({
           </Button>
         )}
       </summary>
-      <div className="mt-2 rounded-[10px] border border-border pl-4 py-3 pr-3 space-y-1.5">
+      <div className="mt-2 rounded-[10px] border border-border pl-4 py-3 pr-3 stack-y-1.5">
         {(() => {
           let lastGroup = "";
           return colorLabels.map(({ key, label: colorLabel, group }) => {

@@ -37,6 +37,9 @@ interface ToolbarButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
 }
 
+// Toolbar tooltips only show after a long hover, so they don't pop up while reaching for a tool
+export const TOOLBAR_TOOLTIP_DELAY_MS = 2000;
+
 export function ToolbarButton({
   isActive = false,
   className = "",
@@ -63,7 +66,11 @@ export function ToolbarButton({
   );
 
   if (title) {
-    return <Tooltip content={title}>{button}</Tooltip>;
+    return (
+      <Tooltip content={title} delayDuration={TOOLBAR_TOOLTIP_DELAY_MS}>
+        {button}
+      </Tooltip>
+    );
   }
 
   return button;
@@ -165,7 +172,7 @@ export function ListItem({
         "w-full text-left px-2.5 py-2.25 transition-colors cursor-pointer select-none rounded-md",
         "focus:outline-none focus-visible:outline-none",
         isSelected
-          ? "bg-bg-muted group-focus/notelist:ring-1 group-focus/notelist:ring-text-muted"
+          ? "bg-bg-muted in-note-list-focus:ring-1 in-note-list-focus:ring-text-muted"
           : "hover:bg-bg-muted"
       )}
     >

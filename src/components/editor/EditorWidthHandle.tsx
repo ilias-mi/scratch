@@ -42,7 +42,15 @@ export function EditorWidthHandles({ containerRef }: EditorWidthHandlesProps) {
     initialWidth: number;
     side: "left" | "right";
     containerWidth: number;
+    note: HTMLElement | null;
   } | null>(null);
+
+  // A handle that unmounts mid-drag must not leave the note pinned to the drag width
+  useEffect(() => {
+    return () => {
+      dragState.current?.note?.style.removeProperty("max-width");
+    };
+  }, []);
 
   // Compute handle offset based on container and editor width
   const updateHandleOffset = useCallback(() => {
@@ -102,6 +110,9 @@ export function EditorWidthHandles({ containerRef }: EditorWidthHandlesProps) {
         initialWidth,
         side,
         containerWidth,
+        note:
+          containerRef.current?.querySelector<HTMLElement>(".ProseMirror") ??
+          null,
       };
       setIsDragging(true);
       setDragWidth(initialWidth);
@@ -113,7 +124,8 @@ export function EditorWidthHandles({ containerRef }: EditorWidthHandlesProps) {
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (!dragState.current) return;
-      const { startX, initialWidth, side, containerWidth } = dragState.current;
+      const { startX, initialWidth, side, containerWidth, note } =
+        dragState.current;
 
       const delta = e.clientX - startX;
       const newWidth =
@@ -137,12 +149,14 @@ export function EditorWidthHandles({ containerRef }: EditorWidthHandlesProps) {
 
       setSnappedPreset(snapped);
       setDragWidth(finalWidth);
-      setEditorMaxWidthLive(`${finalWidth}px`);
+      // On the note itself, not --editor-max-width: changing that inherited property on the root
+      // restyles the whole note on every move. Important to beat the rule in App.css.
+      note?.style.setProperty("max-width", `${finalWidth}px`, "important");
 
       // Update handle offset live during drag
       setHandleOffset((containerWidth - finalWidth) / 2);
     },
-    [setEditorMaxWidthLive],
+    [],
   );
 
   const handlePointerUp = useCallback(
@@ -150,6 +164,8 @@ export function EditorWidthHandles({ containerRef }: EditorWidthHandlesProps) {
       if (!dragState.current) return;
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
 
+      setEditorMaxWidthLive(`${dragWidth}px`);
+      dragState.current.note?.style.removeProperty("max-width");
       if (snappedPreset) {
         setEditorWidth(snappedPreset);
       } else {
@@ -159,16 +175,21 @@ export function EditorWidthHandles({ containerRef }: EditorWidthHandlesProps) {
       dragState.current = null;
       setIsDragging(false);
     },
-    [snappedPreset, dragWidth, setEditorWidth, setCustomEditorWidthPx],
+    [
+      snappedPreset,
+      dragWidth,
+      setEditorWidth,
+      setCustomEditorWidthPx,
+      setEditorMaxWidthLive,
+    ],
   );
 
   const handlePointerCancel = useCallback(() => {
     if (!dragState.current) return;
+    dragState.current.note?.style.removeProperty("max-width");
     dragState.current = null;
     setIsDragging(false);
-    // Re-apply the persisted width from theme state (not the clamped px value)
-    setEditorWidth(editorWidth);
-  }, [editorWidth, setEditorWidth]);
+  }, []);
 
   const handleDoubleClick = useCallback(() => {
     setEditorWidth("normal");
@@ -210,7 +231,7 @@ export function EditorWidthHandles({ containerRef }: EditorWidthHandlesProps) {
         <div
           className={cn(
             "absolute left-1/2 -translate-x-1/2 top-0 h-full w-0.75 rounded-full bg-border transition-opacity duration-150",
-            isDragging ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            isDragging ? "opacity-100" : "opacity-0 in-group-hover:opacity-100",
           )}
         />
       </div>
@@ -234,7 +255,7 @@ export function EditorWidthHandles({ containerRef }: EditorWidthHandlesProps) {
         <div
           className={cn(
             "absolute left-1/2 -translate-x-1/2 top-0 h-full w-0.75 rounded-full bg-border transition-opacity duration-150",
-            isDragging ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            isDragging ? "opacity-100" : "opacity-0 in-group-hover:opacity-100",
           )}
         />
       </div>

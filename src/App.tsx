@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { NotesProvider, useNotes } from "./context/NotesContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
@@ -36,13 +36,18 @@ import {
 } from "@tauri-apps/plugin-updater";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as aiService from "./services/ai";
+import { openNoteWindow } from "./services/notes";
 import type { AiProvider } from "./services/ai";
 import { isMac, isWindows } from "./lib/platform";
 
-// Detect preview mode from URL search params
+// Length of the sidebar show/hide animation (duration-500 on the sidebar)
+const SIDEBAR_TRANSITION_MS = 500;
+
+// Detect preview mode, or the note a new window opens on, from URL search params
 function getWindowMode(): {
   isPreview: boolean;
   previewFile: string | null;
+  initialNoteId: string | null;
 } {
   const params = new URLSearchParams(window.location.search);
   const mode = params.get("mode");
@@ -50,6 +55,7 @@ function getWindowMode(): {
   return {
     isPreview: mode === "preview" && !!file,
     previewFile: file,
+    initialNoteId: params.get("note"),
   };
 }
 
@@ -69,6 +75,8 @@ function AppContent() {
     reloadCurrentNote,
     currentNote,
     syncNotesFolder,
+    tabs,
+    closeTab,
   } = useNotes();
   const { interfaceZoom, setInterfaceZoom, reloadSettings } = useTheme();
   const interfaceZoomRef = useRef(interfaceZoom);
@@ -111,6 +119,36 @@ function AppContent() {
   const sidebarPeekingRef = useRef(sidebarPeeking);
   sidebarPeekingRef.current = sidebarPeeking;
   const sidebarShown = (sidebarVisible && !focusMode) || sidebarPeeking;
+
+  // While the sidebar animates its width, hold the editor at the width it settles at,
+  // so long notes wrap once instead of on every frame
+  const layoutRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const layout = layoutRef.current;
+    const sidebar = sidebarRef.current;
+    const scroller = layout?.querySelector<HTMLElement>("[data-editor-scroll]");
+    if (!layout || !sidebar || !scroller) return;
+    const targetWidth = sidebarShown
+      ? parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width")) ||
+        SIDEBAR_DEFAULT_PX
+      : 0;
+    const delta = sidebar.getBoundingClientRect().width - targetWidth;
+    if (Math.abs(delta) < 1) return;
+    // Set on the scroll container itself: a custom property on an ancestor is inherited by
+    // every element of the note, so changing it would restyle the whole note
+    const settledWidth = scroller.getBoundingClientRect().width + delta;
+    Object.assign(scroller.style, {
+      left: `calc(50% - ${settledWidth / 2}px)`,
+      right: "auto",
+      width: `${settledWidth}px`,
+    });
+    const settle = () => Object.assign(scroller.style, { left: "", right: "", width: "" });
+    const timer = window.setTimeout(settle, SIDEBAR_TRANSITION_MS);
+    return () => {
+      window.clearTimeout(timer);
+      settle();
+    };
+  }, [sidebarShown]);
 
   useEffect(() => {
     if (view !== "notes" || sidebarVisible || focusMode) return;
@@ -269,7 +307,7 @@ function AppContent() {
           );
         } else {
           toast.error(
-            <div className="space-y-1">
+            <div className="stack-y-1">
               <div className="font-medium">AI Edit Failed</div>
               <div className="text-xs">{result.error || "Unknown error"}</div>
             </div>,
@@ -302,6 +340,24 @@ function AppContent() {
         target.tagName === "INPUT" || target.tagName === "TEXTAREA";
       const isEditorEmpty =
         isInEditor && currentNoteRef.current?.content.trim() === "";
+
+      // Cmd+W - Close the active tab, or the window when it's the last one
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "w") {
+        e.preventDefault();
+        if (view === "notes" && selectedNoteId && tabs.length > 1) {
+          closeTab(selectedNoteId);
+        } else {
+          getCurrentWindow().close().catch(console.error);
+        }
+        return;
+      }
+
+      // Cmd+Shift+N - New window
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        openNoteWindow().catch(() => toast.error("Failed to open window"));
+        return;
+      }
 
       // Cmd+, - Toggle settings (always works, even in settings)
       if ((e.metaKey || e.ctrlKey) && e.key === ",") {
@@ -338,6 +394,24 @@ function AppContent() {
 
       // Block all other shortcuts when in settings view
       if (view === "settings") {
+        return;
+      }
+
+      // Ctrl+Tab / Ctrl+Shift+Tab - Next / previous tab
+      if (e.ctrlKey && e.key === "Tab") {
+        e.preventDefault();
+        if (tabs.length > 1) {
+          const index = tabs.indexOf(selectedNoteId ?? "");
+          const offset = e.shiftKey ? -1 : 1;
+          selectNote(tabs[(index + offset + tabs.length) % tabs.length]);
+        }
+        return;
+      }
+
+      // Cmd+T - New note in a new tab
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "t") {
+        e.preventDefault();
+        createNote(true);
         return;
       }
 
@@ -535,6 +609,8 @@ function AppContent() {
     reloadCurrentNote,
     selectedNoteId,
     selectNote,
+    tabs,
+    closeTab,
     toggleSettings,
     toggleSidebar,
     toggleFocusMode,
@@ -565,7 +641,7 @@ function AppContent() {
 
   return (
     <>
-      <div className="h-full min-h-0 flex bg-bg text-text overflow-hidden">
+      <div ref={layoutRef} className="h-full min-h-0 flex bg-bg text-text overflow-hidden">
         {view === "settings" ? (
           <SettingsPage onBack={closeSettings} />
         ) : (
@@ -574,10 +650,16 @@ function AppContent() {
               ref={sidebarRef}
               data-sidebar
               style={{ width: sidebarShown ? `var(--sidebar-width, ${SIDEBAR_DEFAULT_PX}px)` : 0 }}
-              className={`relative transition-all duration-500 ease-out overflow-hidden ${sidebarShown ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4 pointer-events-none"}`}
+              className={`relative transition-all duration-500 ease-out overflow-hidden ${sidebarShown ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4"}`}
             >
               <Sidebar onOpenSettings={toggleSettings} />
-              {sidebarShown && <SidebarResizeHandle />}
+              {sidebarShown ? (
+                <SidebarResizeHandle />
+              ) : (
+                // Blocks clicks while the sidebar hides; pointer-events-none on the container would
+                // be inherited by every note in the list and restyle them all
+                <div className="absolute inset-0 z-20" />
+              )}
             </div>
             <Editor
               onToggleSidebar={toggleSidebar}
@@ -734,10 +816,11 @@ function UpdateToast({
 }
 
 function App() {
-  const { isPreview, previewFile } = useMemo(getWindowMode, []);
+  const { isPreview, previewFile, initialNoteId } = useMemo(getWindowMode, []);
 
-  // Cmd/Ctrl+W — close window (works in both preview and folder mode)
+  // Cmd/Ctrl+W — close preview window (folder mode closes tabs first, in AppContent)
   useEffect(() => {
+    if (!isPreview) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "w") {
         e.preventDefault();
@@ -746,7 +829,7 @@ function App() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [isPreview]);
 
   // Add platform class for OS-specific styling (e.g., keyboard shortcuts)
   useEffect(() => {
@@ -754,9 +837,9 @@ function App() {
     document.documentElement.classList.add(`platform-${os}`);
   }, []);
 
-  // Check for app updates on startup (folder mode only)
+  // Check for app updates on startup (main window only)
   useEffect(() => {
-    if (isPreview) return;
+    if (isPreview || getCurrentWindow().label !== "main") return;
     const timer = setTimeout(() => showUpdateToast(), 3000);
     return () => clearTimeout(timer);
   }, [isPreview]);
@@ -778,7 +861,7 @@ function App() {
     <ThemeProvider>
       <Toaster />
       <TooltipProvider>
-        <NotesProvider>
+        <NotesProvider initialNoteId={initialNoteId}>
           <GitProvider>
             <AppContent />
           </GitProvider>

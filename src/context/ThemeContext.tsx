@@ -15,7 +15,7 @@ import type {
   FontFamily,
   TextDirection,
   EditorWidth,
-  HeadingIndicatorMode,
+  LineNumbers,
   CustomColors,
   ThemeColorKey,
 } from "../types/note";
@@ -107,6 +107,8 @@ interface ThemeContextType {
   reloadSettings: () => Promise<void>;
   textDirection: TextDirection;
   setTextDirection: (dir: TextDirection) => void;
+  lineNumbers: LineNumbers;
+  setLineNumbers: (level: LineNumbers) => void;
   editorWidth: EditorWidth;
   setEditorWidth: (width: EditorWidth) => void;
   interfaceZoom: number;
@@ -116,8 +118,6 @@ interface ThemeContextType {
   setEditorMaxWidthLive: (value: string) => void;
   sidebarWidthPx: number | null;
   setSidebarWidthPx: (px: number | null) => void;
-  headingIndicator: HeadingIndicatorMode;
-  setHeadingIndicator: (mode: HeadingIndicatorMode) => void;
   setSidebarWidthLive: (px: number) => void;
   customColorsLight: CustomColors;
   customColorsDark: CustomColors;
@@ -179,6 +179,10 @@ function applyLayoutCSSVariables(
   }
 }
 
+function isLineNumbers(value: unknown): value is LineNumbers {
+  return value === "off" || value === "faint" || value === "subtle";
+}
+
 function isTextDirection(value: unknown): value is TextDirection {
   return value === "auto" || value === "ltr" || value === "rtl";
 }
@@ -189,13 +193,13 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     Required<EditorFontSettings>
   >(defaultEditorFontSettings);
   const [textDirection, setTextDirectionState] = useState<TextDirection>("auto");
+  const [lineNumbers, setLineNumbersState] = useState<LineNumbers>("off");
   const [editorWidth, setEditorWidthState] = useState<EditorWidth>("normal");
   const [interfaceZoom, setInterfaceZoomState] = useState(1.0);
   const [customEditorWidthPx, setCustomEditorWidthPxState] = useState<number>(
     DEFAULT_CUSTOM_WIDTH_PX
   );
   const [sidebarWidthPx, setSidebarWidthPxState] = useState<number | null>(null);
-  const [headingIndicator, setHeadingIndicatorState] = useState<HeadingIndicatorMode>("focused");
   const [customColorsLight, setCustomColorsLightState] = useState<CustomColors>({});
   const [customColorsDark, setCustomColorsDarkState] = useState<CustomColors>({});
   const [isInitialized, setIsInitialized] = useState(false);
@@ -229,6 +233,9 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       if (isTextDirection(settings.textDirection)) {
         setTextDirectionState(settings.textDirection);
       }
+      if (isLineNumbers(settings.lineNumbers)) {
+        setLineNumbersState(settings.lineNumbers);
+      }
       if (
         settings.editorWidth === "narrow" ||
         settings.editorWidth === "normal" ||
@@ -257,9 +264,6 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         settings.sidebarWidthPx <= SIDEBAR_MAX_PX
       ) {
         setSidebarWidthPxState(settings.sidebarWidthPx);
-      }
-      if (settings.headingIndicator === "focused" || settings.headingIndicator === "outline") {
-        setHeadingIndicatorState(settings.headingIndicator);
       }
       if (settings.customColorsLight) {
         setCustomColorsLightState(settings.customColorsLight);
@@ -403,11 +407,11 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   const resetEditorFontSettings = useCallback(async () => {
     setEditorFontSettings(defaultEditorFontSettings);
     setTextDirectionState("auto");
+    setLineNumbersState("off");
     setEditorWidthState("normal");
     setInterfaceZoomState(1.0);
     setCustomEditorWidthPxState(DEFAULT_CUSTOM_WIDTH_PX);
     setSidebarWidthPxState(null);
-    setHeadingIndicatorState("focused");
     setCustomColorsLightState({});
     setCustomColorsDarkState({});
     try {
@@ -416,11 +420,11 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         ...settings,
         editorFont: defaultEditorFontSettings,
         textDirection: "auto",
+        lineNumbers: undefined,
         editorWidth: "normal",
         interfaceZoom: 1.0,
         customEditorWidthPx: undefined,
         sidebarWidthPx: undefined,
-        headingIndicator: undefined,
         customColorsLight: undefined,
         customColorsDark: undefined,
       });
@@ -440,6 +444,17 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     }
   }, []);
 
+  // Save and set line number visibility
+  const setLineNumbers = useCallback(async (level: LineNumbers) => {
+    setLineNumbersState(level);
+    try {
+      const settings = await getSettings();
+      await updateSettings({ ...settings, lineNumbers: level });
+    } catch (error) {
+      console.error("Failed to save line numbers setting:", error);
+    }
+  }, []);
+
   // Save and set editor width
   const setEditorWidth = useCallback(async (width: EditorWidth) => {
     setEditorWidthState(width);
@@ -448,17 +463,6 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       await updateSettings({ ...settings, editorWidth: width });
     } catch (error) {
       console.error("Failed to save editor width:", error);
-    }
-  }, []);
-
-  // Save and set heading indicator view
-  const setHeadingIndicator = useCallback(async (mode: HeadingIndicatorMode) => {
-    setHeadingIndicatorState(mode);
-    try {
-      const settings = await getSettings();
-      await updateSettings({ ...settings, headingIndicator: mode });
-    } catch (error) {
-      console.error("Failed to save heading indicator view:", error);
     }
   }, []);
 
@@ -612,7 +616,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     [],
   );
 
-  // Live CSS variable update during drag (no persistence)
+  // Applies a width right away, ahead of the state update (no persistence)
   const setEditorMaxWidthLive = useCallback((value: string) => {
     document.documentElement.style.setProperty("--editor-max-width", value);
   }, []);
@@ -640,6 +644,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         reloadSettings,
         textDirection,
         setTextDirection,
+        lineNumbers,
+        setLineNumbers,
         editorWidth,
         setEditorWidth,
         interfaceZoom,
@@ -650,8 +656,6 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         sidebarWidthPx,
         setSidebarWidthPx,
         setSidebarWidthLive,
-        headingIndicator,
-        setHeadingIndicator,
         customColorsLight,
         customColorsDark,
         setCustomColor,

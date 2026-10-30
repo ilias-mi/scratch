@@ -1,4 +1,4 @@
-import { mod, shift } from "./platform";
+import { ctrl, mod, shift } from "./platform";
 
 export interface Shortcut {
   keys: string[];
@@ -19,7 +19,11 @@ export const shortcutCategories: ShortcutCategory[] = [
       { keys: [mod, "\\"], description: "Toggle sidebar" },
       { keys: [mod, ","], description: "Settings" },
       { keys: [mod, "/"], description: "Keyboard shortcuts" },
-      { keys: [mod, "W"], description: "Close window" },
+      { keys: [mod, "T"], description: "New tab" },
+      { keys: [mod, "W"], description: "Close tab / window" },
+      { keys: [ctrl, "Tab"], description: "Next tab" },
+      { keys: [ctrl, shift, "Tab"], description: "Previous tab" },
+      { keys: [mod, shift, "N"], description: "New window" },
       { keys: [mod, "="], description: "Zoom in" },
       { keys: [mod, "-"], description: "Zoom out" },
       { keys: [mod, "0"], description: "Reset zoom" },

@@ -56,6 +56,18 @@ export const ScratchBlockMath = BlockMath.extend({
           };
         },
         props: {
+          // A click opens the editor (node view click handler), so skip the mousedown: selecting
+          // the node would paint the native selection across all text above it for a moment
+          handleDOMEvents: {
+            mousedown(_view, event) {
+              const target = event.target as Element | null;
+              if (!onClick || event.button !== 0 || !target?.closest?.('[data-type="block-math"]')) {
+                return false;
+              }
+              event.preventDefault();
+              return true;
+            },
+          },
           // Open editor on Enter or Space when a blockMath node is selected
           handleKeyDown(view, event) {
             if (event.key !== "Enter" && event.key !== " ") return false;
@@ -101,6 +113,13 @@ interface MathPreviewState {
 
 const mathPreviewKey = new PluginKey<MathPreviewState>("mathPreview");
 
+// The rendered preview, to anchor the math popup: the inline math node it replaces is hidden
+let previewElement: HTMLElement | null = null;
+
+export function getMathPreviewElement(): HTMLElement | null {
+  return previewElement?.isConnected ? previewElement : null;
+}
+
 export function setMathPreview(view: EditorView, preview: MathPreview | null) {
   if (!preview && !mathPreviewKey.getState(view.state)?.preview) return;
   view.dispatch(view.state.tr.setMeta(mathPreviewKey, preview));
@@ -118,6 +137,7 @@ function buildPreviewDecorations(
     () => {
       const span = document.createElement("span");
       span.className = "tiptap-mathematics-render math-preview";
+      previewElement = span;
       if (!preview.latex) {
         span.classList.add("math-preview--empty");
         span.textContent = "$";

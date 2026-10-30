@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { NodeViewWrapper, NodeViewContent } from "@tiptap/react";
 import type { ReactNodeViewProps } from "@tiptap/react";
 import { SUPPORTED_LANGUAGES } from "./lowlight";
@@ -14,6 +14,17 @@ export function CodeBlockView({ node, updateAttributes }: ReactNodeViewProps) {
   const isMermaid = language === "mermaid";
   const [showSource, setShowSource] = useState(!node.textContent.trim());
   const codeContent = node.textContent;
+  const lineCount = codeContent.split("\n").length;
+  const lineNumbers = useMemo(
+    () => (
+      <div className="code-line-numbers" contentEditable={false} aria-hidden="true">
+        {Array.from({ length: lineCount }, (_, i) => (
+          <span key={i} className="code-line-number" />
+        ))}
+      </div>
+    ),
+    [lineCount],
+  );
 
   const handleLanguageChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -95,6 +106,7 @@ export function CodeBlockView({ node, updateAttributes }: ReactNodeViewProps) {
     <NodeViewWrapper className="code-block-wrapper" as="div">
       {toolbar}
       <pre>
+        {!isMermaid && lineNumbers}
         {/* @ts-expect-error - "code" is a valid intrinsic element for NodeViewContent */}
         <NodeViewContent as="code" />
       </pre>
