@@ -18,7 +18,6 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
-import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { TableKit } from "@tiptap/extension-table";
 import { Markdown } from "@tiptap/markdown";
@@ -61,7 +60,8 @@ function isAllowedUrlScheme(url: string): boolean {
 }
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
-import { useOptionalNotes } from "../../context/NotesContext";
+import { useNotes } from "../../context/NotesContext";
+import { isExternalNoteId } from "../../lib/noteIds";
 import { useTheme } from "../../context/ThemeContext";
 import { Frontmatter } from "./Frontmatter";
 import { BlockMathEditor } from "./BlockMathEditor";
@@ -73,6 +73,7 @@ import { SectionPath } from "./SectionPath";
 import { SourceLineNumbers } from "./SourceLineNumbers";
 import { LineCounter } from "./LineCounter";
 import { ResizableTable, TableWidths } from "./TableWidths";
+import { FastOrderedList, FastTaskList } from "./ListTokenizers";
 import { TabBar } from "./TabBar";
 import { useIsFullscreen } from "./useIsFullscreen";
 import { getNotePosition, setNotePosition } from "../../lib/notePositions";
@@ -575,26 +576,11 @@ const FormatBar = memo(function FormatBar({
   );
 });
 
-// Data source for preview mode — bypasses NotesContext
-export interface PreviewModeData {
-  content: string | null;
-  title: string;
-  filePath: string;
-  modified: number;
-  hasExternalChanges: boolean;
-  reloadVersion: number;
-  save: (content: string) => Promise<void>;
-  reload: () => Promise<void>;
-}
-
 interface EditorProps {
   onToggleSidebar?: () => void;
   sidebarVisible?: boolean;
   focusMode?: boolean;
-  previewMode?: PreviewModeData;
   onEditorReady?: (editor: TiptapEditor | null) => void;
-  onSaveToFolder?: () => void;
-  saveToFolderDisabled?: boolean;
 }
 
 /**
@@ -655,49 +641,27 @@ export function Editor({
   sidebarVisible,
   focusMode,
   onEditorReady,
-  previewMode,
-  onSaveToFolder,
-  saveToFolderDisabled,
 }: EditorProps) {
-  // Always call the hook (rules of hooks), but it returns null outside NotesProvider
-  const notesCtx = useOptionalNotes();
-
-  const currentNote = previewMode
-    ? previewMode.content !== null
-      ? {
-          id: previewMode.filePath,
-          title: previewMode.title,
-          content: previewMode.content,
-          path: previewMode.filePath,
-          modified: previewMode.modified,
-        }
-      : null
-    : (notesCtx?.currentNote ?? null);
-
-  const saveNote = previewMode
-    ? async (content: string, _noteId?: string) => {
-        await previewMode.save(content);
-      }
-    : notesCtx!.saveNote;
-
-  const createNote = notesCtx?.createNote;
-  const consumePendingNewNote = notesCtx?.consumePendingNewNote;
-  const renameNote = notesCtx?.renameNote;
-  const resolveNoteId = notesCtx?.resolveNoteId;
-  const isPreview = !!previewMode;
-  const showTabs = (notesCtx?.tabs.length ?? 0) > 1;
-  const hasExternalChanges = previewMode
-    ? previewMode.hasExternalChanges
-    : notesCtx!.hasExternalChanges;
-  const reloadCurrentNote = previewMode
-    ? previewMode.reload
-    : notesCtx!.reloadCurrentNote;
-  const reloadVersion = previewMode
-    ? previewMode.reloadVersion
-    : notesCtx!.reloadVersion;
-  const pinNote = notesCtx?.pinNote;
-  const unpinNote = notesCtx?.unpinNote;
-  const notes = notesCtx?.notes;
+  const notesCtx = useNotes();
+  const {
+    currentNote,
+    saveNote,
+    createNote,
+    consumePendingNewNote,
+    renameNote,
+    resolveNoteId,
+    hasExternalChanges,
+    reloadCurrentNote,
+    reloadVersion,
+    pinNote,
+    unpinNote,
+    saveToNotesFolder,
+    notes,
+  } = notesCtx;
+  const showTabs = notesCtx.tabs.length > 1;
+  // Opened from outside the notes folder: edited in place, can be saved into the folder
+  const isExternal = !!currentNote && isExternalNoteId(currentNote.id);
+  const [savingToFolder, setSavingToFolder] = useState(false);
   const { textDirection, lineNumbers } = useTheme();
   const [isSaving, setIsSaving] = useState(false);
   // Force re-render when selection changes to update toolbar active states
@@ -776,17 +740,16 @@ export function Editor({
     [],
   );
 
-  // Load settings when note changes or notes are refreshed (e.g., after pin/unpin)
+  // Load settings when notes are refreshed (e.g., after pin/unpin), not on every note switch:
+  // each load re-renders the whole editor
   useEffect(() => {
-    if (currentNote?.id && !previewMode) {
-      notesService
-        .getSettings()
-        .then(setSettings)
-        .catch((error) => {
-          console.error("Failed to load settings:", error);
-        });
-    }
-  }, [currentNote?.id, notes, previewMode]);
+    notesService
+      .getSettings()
+      .then(setSettings)
+      .catch((error) => {
+        console.error("Failed to load settings:", error);
+      });
+  }, [notes]);
 
   // Calculate if current note is pinned
   const isPinned =
@@ -1312,7 +1275,9 @@ export function Editor({
           levels: [1, 2, 3, 4, 5, 6],
         },
         codeBlock: false,
+        orderedList: false,
       }),
+      FastOrderedList,
       CodeBlockLowlight.extend({
         addNodeView() {
           return ReactNodeViewRenderer(CodeBlockView);
@@ -1369,7 +1334,7 @@ export function Editor({
         inline: false,
         allowBase64: false,
       }),
-      TaskList,
+      FastTaskList,
       TaskItem.configure({
         nested: true,
       }),
@@ -1558,20 +1523,20 @@ export function Editor({
     const noteId = loadedNoteIdRef.current;
     const container = scrollContainerRef.current;
     const instance = editorRef.current;
-    if (isPreview || sourceModeRef.current || !noteId || !container || !instance) {
+    if (sourceModeRef.current || !noteId || !container || !instance) {
       return;
     }
     const { from, to } = instance.state.selection;
     setNotePosition(noteId, { scrollTop: container.scrollTop, from, to });
-  }, [isPreview]);
+  }, []);
 
   // Layout cleanup runs before the scroll container's ref is detached
   useLayoutEffect(() => rememberPosition, [rememberPosition]);
   // Pull in edits made to the open note outside the app, unless there are unsaved edits
   useEffect(() => {
-    if (previewMode || !hasExternalChanges || needsSaveRef.current) return;
+    if (!hasExternalChanges || needsSaveRef.current) return;
     reloadCurrentNote();
-  }, [previewMode, hasExternalChanges, reloadCurrentNote]);
+  }, [hasExternalChanges, reloadCurrentNote]);
 
   // Track reloadVersion to detect manual refreshes
   const lastReloadVersionRef = useRef(0);
@@ -1818,7 +1783,7 @@ export function Editor({
     const isNewNote = loadedNoteIdRef.current === null;
     const wasEmpty = !isNewNote && currentNote.content?.trim() === "";
     const loadingNoteId = currentNote.id;
-    const position = isPreview ? null : getNotePosition(loadingNoteId);
+    const position = getNotePosition(loadingNoteId);
     const scrollTop = position?.scrollTop ?? 0;
 
     rememberPosition();
@@ -1905,7 +1870,6 @@ export function Editor({
     consumePendingNewNote,
     resolveNoteId,
     rememberPosition,
-    isPreview,
   ]);
 
   // Scrolling up reveals the filename bar only from the top of the note, in a gesture that
@@ -1940,6 +1904,22 @@ export function Editor({
     },
     [renameNote],
   );
+
+  const handleSaveToFolder = useCallback(async () => {
+    const noteId = loadedNoteIdRef.current;
+    if (!noteId) return;
+    setSavingToFolder(true);
+    try {
+      await flushPendingSave();
+      await saveToNotesFolder(noteId);
+      toast.success("Saved a copy to the notes folder");
+    } catch (error) {
+      console.error("Failed to save to notes folder:", error);
+      toast.error(`Failed to save to notes folder: ${error}`);
+    } finally {
+      setSavingToFolder(false);
+    }
+  }, [flushPendingSave, saveToNotesFolder]);
 
   const handleNameDone = useCallback(() => {
     editorRef.current?.commands.focus();
@@ -2510,25 +2490,8 @@ export function Editor({
   );
 
   if (!currentNote) {
-    // Preview mode: show loading state (content not yet loaded)
-    if (previewMode) {
-      return (
-        <div className="flex-1 flex flex-col bg-bg">
-          {!isWindows && (
-            <div
-              className="h-10 shrink-0 flex items-end px-4 pb-1"
-              data-tauri-drag-region
-            ></div>
-          )}
-          <div className="flex-1 flex items-center justify-center">
-            <SpinnerIcon className="w-6 h-6 text-text-muted animate-spin" />
-          </div>
-        </div>
-      );
-    }
-
     // A note is selected but not yet loaded — show loading spinner to avoid empty state flash
-    if (notesCtx?.selectedNoteId) {
+    if (notesCtx.selectedNoteId) {
       return (
         <div className="flex-1 flex flex-col bg-bg">
           {!isWindows && (
@@ -2668,7 +2631,7 @@ export function Editor({
               </div>
             </Tooltip>
           )}
-          {currentNote && pinNote && unpinNote && (
+          {!isExternal && (
             <Tooltip content={isPinned ? "Unpin note" : "Pin note"}>
               <IconButton
                 onClick={async () => {
@@ -2796,14 +2759,14 @@ export function Editor({
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
-          {onSaveToFolder && (
-            <Tooltip content="Save in Folder">
+          {isExternal && (
+            <Tooltip content="Save a copy to the notes folder">
               <IconButton
-                onClick={onSaveToFolder}
-                aria-label="Save in Folder"
-                disabled={saveToFolderDisabled}
+                onClick={handleSaveToFolder}
+                aria-label="Save to notes folder"
+                disabled={savingToFolder}
               >
-                {saveToFolderDisabled ? (
+                {savingToFolder ? (
                   <SpinnerIcon className="w-4.25 h-4.25 animate-spin" />
                 ) : (
                   <FolderPlusIcon className="w-4.25 h-4.25 stroke-[1.6]" />
@@ -2832,23 +2795,21 @@ export function Editor({
           slide at the top edge (it would otherwise pass over the format bar) but leaves the
           bottom open for the headings dropdown. */}
       <div className="relative z-20 [clip-path:inset(0_-1rem_-100vh_-1rem)]">
-        {editor && !sourceMode && !focusMode && !previewMode && (
+        {editor && !sourceMode && !focusMode && (
           <SectionPath
             editor={editor}
             scrollContainerRef={scrollContainerRef}
             hidden={nameBarVisible}
           />
         )}
-        {!previewMode && (
-          <NoteNameBar
-            ref={nameBarRef}
-            noteId={currentNote.id}
-            visible={nameBarVisible}
-            focusRequest={nameFocusRequest}
-            onRename={handleRename}
-            onDone={handleNameDone}
-          />
-        )}
+        <NoteNameBar
+          ref={nameBarRef}
+          noteId={currentNote.id}
+          visible={nameBarVisible}
+          focusRequest={nameFocusRequest}
+          onRename={handleRename}
+          onDone={handleNameDone}
+        />
       </div>
 
       {/* Editor content area with resize handles overlay */}

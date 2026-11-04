@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef } from "react";
 import { useNotesActions, useNotesData } from "../../context/NotesContext";
 import { cn } from "../../lib/utils";
+import { noteFileName } from "../../lib/noteIds";
 import { XIcon } from "../icons";
 
 // Open notes of this window; hidden while only one note is open
@@ -45,7 +46,7 @@ export const TabBar = memo(function TabBar() {
             )}
           >
             <span className="truncate">
-              {titles.get(id) ?? id.substring(id.lastIndexOf("/") + 1)}
+              {titles.get(id) ?? noteFileName(id).name}
             </span>
             <button
               type="button"

@@ -29,7 +29,6 @@ import {
 import { AiEditModal } from "./components/ai/AiEditModal";
 import { AiResponseToast } from "./components/ai/AiResponseToast";
 import { KeyboardShortcutsModal } from "./components/shortcuts/KeyboardShortcutsModal";
-import { PreviewApp } from "./components/preview/PreviewApp";
 import {
   check as checkForUpdate,
   type Update,
@@ -39,24 +38,14 @@ import * as aiService from "./services/ai";
 import { openNoteWindow } from "./services/notes";
 import type { AiProvider } from "./services/ai";
 import { isMac, isWindows } from "./lib/platform";
+import { isExternalNoteId } from "./lib/noteIds";
 
 // Length of the sidebar show/hide animation (duration-500 on the sidebar)
 const SIDEBAR_TRANSITION_MS = 500;
 
-// Detect preview mode, or the note a new window opens on, from URL search params
-function getWindowMode(): {
-  isPreview: boolean;
-  previewFile: string | null;
-  initialNoteId: string | null;
-} {
-  const params = new URLSearchParams(window.location.search);
-  const mode = params.get("mode");
-  const file = params.get("file");
-  return {
-    isPreview: mode === "preview" && !!file,
-    previewFile: file,
-    initialNoteId: params.get("note"),
-  };
+// The note a new window opens on, from URL search params
+function getInitialNoteId(): string | null {
+  return new URLSearchParams(window.location.search).get("note");
 }
 
 type ViewState = "notes" | "settings";
@@ -502,6 +491,7 @@ function AppContent() {
       // Delete current note (note list focused, or editor on empty note)
       if (
         selectedNoteId &&
+        !isExternalNoteId(selectedNoteId) &&
         !isInInput &&
         (e.key === "Delete" ||
           (e.key === "Backspace" && (e.metaKey || e.ctrlKey))) &&
@@ -520,7 +510,8 @@ function AppContent() {
         e.key.toLowerCase() === "d" &&
         !isInEditor &&
         !isInInput &&
-        selectedNoteId
+        selectedNoteId &&
+        !isExternalNoteId(selectedNoteId)
       ) {
         e.preventDefault();
         duplicateNote(selectedNoteId);
@@ -816,20 +807,7 @@ function UpdateToast({
 }
 
 function App() {
-  const { isPreview, previewFile, initialNoteId } = useMemo(getWindowMode, []);
-
-  // Cmd/Ctrl+W — close preview window (folder mode closes tabs first, in AppContent)
-  useEffect(() => {
-    if (!isPreview) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "w") {
-        e.preventDefault();
-        getCurrentWindow().close().catch(console.error);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isPreview]);
+  const initialNoteId = useMemo(getInitialNoteId, []);
 
   // Add platform class for OS-specific styling (e.g., keyboard shortcuts)
   useEffect(() => {
@@ -839,24 +817,11 @@ function App() {
 
   // Check for app updates on startup (main window only)
   useEffect(() => {
-    if (isPreview || getCurrentWindow().label !== "main") return;
+    if (getCurrentWindow().label !== "main") return;
     const timer = setTimeout(() => showUpdateToast(), 3000);
     return () => clearTimeout(timer);
-  }, [isPreview]);
+  }, []);
 
-  // Preview mode: lightweight editor without sidebar, search, git
-  if (isPreview && previewFile) {
-    return (
-      <ThemeProvider>
-        <Toaster />
-        <TooltipProvider>
-          <PreviewApp filePath={decodeURIComponent(previewFile)} />
-        </TooltipProvider>
-      </ThemeProvider>
-    );
-  }
-
-  // Folder mode: full app with sidebar, search, git, etc.
   return (
     <ThemeProvider>
       <Toaster />

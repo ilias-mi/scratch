@@ -987,6 +987,14 @@ async fn list_notes(state: State<'_, AppState>) -> Result<Vec<NoteMetadata>, Str
 
 #[tauri::command]
 async fn read_note(id: String, state: State<'_, AppState>) -> Result<Note, String> {
+    if let Some(path) = external_note_path(&id) {
+        let path = path?;
+        let content = fs::read_to_string(&path)
+            .await
+            .map_err(|_| "Failed to read file".to_string())?;
+        return Ok(external_note(id, &path, content).await);
+    }
+
     let folder = {
         let app_config = state.app_config.read().expect("app_config read lock");
         app_config
@@ -1030,6 +1038,14 @@ async fn save_note(
     content: String,
     state: State<'_, AppState>,
 ) -> Result<Note, String> {
+    if let Some(path) = external_note_path(&id) {
+        let path = path?;
+        fs::write(&path, &content)
+            .await
+            .map_err(|_| "Failed to write file".to_string())?;
+        return Ok(external_note(id, &path, content).await);
+    }
+
     let folder = {
         let app_config = state.app_config.read().expect("app_config read lock");
         app_config
@@ -1075,6 +1091,10 @@ async fn rename_note(
     new_name: String,
     state: State<'_, AppState>,
 ) -> Result<Note, String> {
+    if let Some(path) = external_note_path(&id) {
+        return rename_external_note(&path?, &new_name).await;
+    }
+
     let folder = {
         let app_config = state.app_config.read().expect("app_config read lock");
         app_config
@@ -1837,15 +1857,6 @@ fn preview_note_name(template: String) -> Result<String, String> {
     Ok(preview)
 }
 
-// Preview mode: file content returned by read_file_direct / save_file_direct
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileContent {
-    pub path: String,
-    pub content: String,
-    pub title: String,
-    pub modified: i64,
-}
-
 fn file_stem_title(path: &Path) -> String {
     path.file_stem()
         .and_then(|s| s.to_str())
@@ -1853,15 +1864,14 @@ fn file_stem_title(path: &Path) -> String {
         .to_string()
 }
 
-/// Validate a file path for preview mode direct file operations.
+/// Validate a path to a markdown file outside the notes folder.
 /// Ensures the path is a markdown file and resolves symlinks.
-fn validate_preview_path(path: &str) -> Result<PathBuf, String> {
+fn validate_markdown_path(path: &str) -> Result<PathBuf, String> {
     let file_path = PathBuf::from(path);
 
     // Must have a markdown extension
-    match file_path.extension().and_then(|e| e.to_str()) {
-        Some(ext) if ext.eq_ignore_ascii_case("md") || ext.eq_ignore_ascii_case("markdown") => {}
-        _ => return Err("Only .md and .markdown files are allowed".to_string()),
+    if !is_markdown_extension(&file_path) {
+        return Err("Only .md and .markdown files are allowed".to_string());
     }
 
     // Resolve symlinks to get the real path
@@ -1869,84 +1879,82 @@ fn validate_preview_path(path: &str) -> Result<PathBuf, String> {
         .canonicalize()
         .map_err(|e| format!("Cannot resolve file path: {}", e))?;
 
+    if !canonical.is_file() {
+        return Err(format!("Not a file: {}", path));
+    }
+
     Ok(canonical)
 }
 
-#[tauri::command]
-async fn read_file_direct(path: String) -> Result<FileContent, String> {
-    let canonical = validate_preview_path(&path)?;
-
-    if !canonical.is_file() {
-        return Err(format!("Not a file: {}", path));
-    }
-
-    let content = fs::read_to_string(&canonical)
-        .await
-        .map_err(|_| "Failed to read file".to_string())?;
-    let metadata = fs::metadata(&canonical)
-        .await
-        .map_err(|_| "Failed to read metadata".to_string())?;
-
-    let modified = metadata
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-
-    let title = file_stem_title(&canonical);
-
-    Ok(FileContent {
-        path,
-        content,
-        title,
-        modified,
-    })
+/// Notes outside the notes folder (opened from Finder, the CLI or drag and drop) use their
+/// absolute path as ID, while notes inside it use a relative path without extension
+fn external_note_path(id: &str) -> Option<Result<PathBuf, String>> {
+    Path::new(id)
+        .is_absolute()
+        .then(|| validate_markdown_path(id))
 }
 
-#[tauri::command]
-async fn save_file_direct(path: String, content: String) -> Result<FileContent, String> {
-    // For save, the file must already exist (we validate extension + path security)
-    let canonical = validate_preview_path(&path)?;
-
-    if !canonical.is_file() {
-        return Err(format!("Not a file: {}", path));
-    }
-
-    fs::write(&canonical, &content)
+async fn modified_secs(path: &Path) -> i64 {
+    fs::metadata(path)
         .await
-        .map_err(|_| "Failed to write file".to_string())?;
-
-    let metadata = fs::metadata(&canonical)
-        .await
-        .map_err(|_| "Failed to read metadata".to_string())?;
-    let modified = metadata
-        .modified()
         .ok()
+        .and_then(|m| m.modified().ok())
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+        .unwrap_or(0)
+}
 
-    let title = file_stem_title(&canonical);
-
-    Ok(FileContent {
-        path,
+async fn external_note(id: String, path: &Path, content: String) -> Note {
+    Note {
+        title: file_stem_title(path),
+        id,
         content,
-        title,
-        modified,
-    })
+        path: path.to_string_lossy().into_owned(),
+        modified: modified_secs(path).await,
+    }
+}
+
+/// Renames a file outside the notes folder in place, keeping its extension
+async fn rename_external_note(path: &Path, new_name: &str) -> Result<Note, String> {
+    let dir = path.parent().ok_or("Invalid file path")?;
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("md")
+        .to_string();
+    let name = new_name.trim().trim_start_matches('.');
+    let suffix = format!(".{}", ext.to_ascii_lowercase());
+    let name = if name.to_ascii_lowercase().ends_with(&suffix) {
+        &name[..name.len() - suffix.len()]
+    } else {
+        name
+    };
+    let leaf = sanitize_filename(name);
+
+    // Pick a free name; a case-only rename on a case-insensitive filesystem resolves to the source itself
+    let source_canonical = path.canonicalize().ok();
+    let mut dest = dir.join(format!("{}.{}", leaf, ext));
+    let mut counter = 1;
+    while dest.exists() && dest.canonicalize().ok() != source_canonical {
+        dest = dir.join(format!("{}-{}.{}", leaf, counter, ext));
+        counter += 1;
+    }
+
+    if dest != path {
+        fs::rename(path, &dest).await.map_err(|e| e.to_string())?;
+    }
+    let content = fs::read_to_string(&dest)
+        .await
+        .map_err(|_| "Failed to read file".to_string())?;
+    Ok(external_note(dest.to_string_lossy().into_owned(), &dest, content).await)
 }
 
 #[tauri::command]
 async fn import_file_to_folder(
-    app: AppHandle,
     path: String,
     state: State<'_, AppState>,
 ) -> Result<NoteMetadata, String> {
-    let source = validate_preview_path(&path)?;
-    if !source.is_file() {
-        return Err(format!("Not a file: {}", path));
-    }
+    let source = validate_markdown_path(&path)?;
 
     let folder = {
         let app_config = state.app_config.read().expect("app_config read lock");
@@ -2015,12 +2023,6 @@ async fn import_file_to_folder(
     {
         let mut cache = state.notes_cache.write().expect("cache write lock");
         cache.insert(metadata.id.clone(), metadata.clone());
-    }
-
-    // Tell a notes window to select the imported note and focus it
-    if let Some(window) = notes_window(&app) {
-        let _ = app.emit_to(window.label(), "select-note", &metadata.id);
-        let _ = window.set_focus();
     }
 
     Ok(metadata)
@@ -3476,54 +3478,27 @@ async fn ai_execute_ollama(
     }
 }
 
-/// Check if a markdown file is inside the configured notes folder.
-/// If so, emit a "select-note" event to the main window and focus it, returning true.
-/// Returns false on any failure so callers can fall back to create_preview_window.
-fn try_select_in_notes_folder(app: &AppHandle, path: &Path) -> bool {
-    let state = match app.try_state::<AppState>() {
-        Some(s) => s,
-        None => return false,
-    };
-
-    let notes_folder = state
+/// The note ID of a markdown file inside the configured notes folder, if it is in there
+fn note_id_in_notes_folder(app: &AppHandle, path: &Path) -> Option<String> {
+    let state = app.try_state::<AppState>()?;
+    let folder = state
         .app_config
         .read()
         .expect("app_config read lock")
         .notes_folder
-        .clone();
+        .clone()?;
 
-    let folder = match notes_folder {
-        Some(f) => f,
-        None => return false,
-    };
-
-    let folder_path = PathBuf::from(&folder);
-    let (canonical_file, canonical_folder) = match (path.canonicalize(), folder_path.canonicalize())
-    {
-        (Ok(f), Ok(d)) => (f, d),
-        _ => return false,
-    };
-
+    let canonical_folder = PathBuf::from(&folder).canonicalize().ok()?;
+    let canonical_file = path.canonicalize().ok()?;
     if !canonical_file.starts_with(&canonical_folder) {
-        return false;
+        return None;
     }
 
     let ignored_dirs = {
         let settings = state.settings.read().expect("settings read lock");
         get_effective_ignored_dirs(&settings)
     };
-
-    let note_id = match id_from_abs_path(&canonical_folder, &canonical_file, &ignored_dirs) {
-        Some(id) => id,
-        None => return false,
-    };
-
-    if let Some(window) = notes_window(app) {
-        let _ = app.emit_to(window.label(), "select-note", note_id);
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
-    true
+    id_from_abs_path(&canonical_folder, &canonical_file, &ignored_dirs)
 }
 
 /// Check if a file extension is a supported markdown extension.
@@ -3542,28 +3517,33 @@ fn is_notes_window(label: &str) -> bool {
     label == "main" || label.starts_with("note-")
 }
 
-/// The window that receives app-level requests such as "select this note"
+/// The window that receives app-level requests such as "open this file":
+/// the focused notes window, else the main one, else any
 fn notes_window(app: &AppHandle) -> Option<WebviewWindow> {
-    app.get_webview_window("main").or_else(|| {
-        app.webview_windows()
-            .into_iter()
-            .find(|(label, _)| is_notes_window(label))
-            .map(|(_, window)| window)
-    })
+    let windows: Vec<WebviewWindow> = app
+        .webview_windows()
+        .into_iter()
+        .filter(|(label, _)| is_notes_window(label))
+        .map(|(_, window)| window)
+        .collect();
+    windows
+        .iter()
+        .find(|window| window.is_focused().unwrap_or(false))
+        .or_else(|| windows.iter().find(|window| window.label() == "main"))
+        .or_else(|| windows.first())
+        .cloned()
 }
 
 static NEXT_NOTE_WINDOW: AtomicUsize = AtomicUsize::new(1);
 
-// Async: building a window inside a sync command deadlocks on Windows
-#[tauri::command]
-async fn open_note_window(app: AppHandle, note_id: Option<String>) -> Result<(), String> {
+fn build_notes_window(app: &AppHandle, note_id: Option<String>) -> Result<WebviewWindow, String> {
     let label = format!("note-{}", NEXT_NOTE_WINDOW.fetch_add(1, Ordering::Relaxed));
     let url = match note_id {
         Some(id) => format!("index.html?note={}", urlencoding::encode(&id)),
         None => "index.html".to_string(),
     };
 
-    let builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
+    let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
         .title("Scratch")
         .inner_size(1080.0, 720.0)
         .min_inner_size(600.0, 400.0)
@@ -3578,80 +3558,85 @@ async fn open_note_window(app: AppHandle, note_id: Option<String>) -> Result<(),
 
     builder
         .build()
-        .map_err(|e| format!("Failed to open window: {}", e))?;
-    Ok(())
+        .map_err(|e| format!("Failed to open window: {}", e))
 }
 
-// Preview mode: create a lightweight window for editing a single file
-fn create_preview_window(app: &AppHandle, file_path: &str) -> Result<(), String> {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
+// Async: building a window inside a sync command deadlocks on Windows
+#[tauri::command]
+async fn open_note_window(app: AppHandle, note_id: Option<String>) -> Result<(), String> {
+    build_notes_window(&app, note_id).map(|_| ())
+}
 
-    let mut hasher = DefaultHasher::new();
-    file_path.hash(&mut hasher);
-    let label = format!("preview-{:x}", hasher.finish());
-
-    // If window already exists for this file, focus it
-    if let Some(window) = app.get_webview_window(&label) {
-        window.set_focus().map_err(|e| e.to_string())?;
-        return Ok(());
-    }
-
-    // Extract filename for the window title
-    let filename = PathBuf::from(file_path)
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "Preview".to_string());
-
-    let encoded_path = urlencoding::encode(file_path);
-    let url = format!("index.html?mode=preview&file={}", encoded_path);
-
-    let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
-        .title(format!("{} — Scratch", filename))
-        .inner_size(800.0, 600.0)
-        .min_inner_size(400.0, 300.0)
-        .resizable(true)
-        .decorations(true);
-
-    #[cfg(target_os = "macos")]
-    let builder = builder
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true);
-
-    let window = builder
-        .build()
-        .map_err(|e| format!("Failed to create preview window: {}", e))?;
-
-    // Focus the preview window so it appears on top of the main window.
-    // Use a short delay because during cold start the main window may steal
-    // focus after its WebView finishes loading.
-    let win = window.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        let _ = win.set_focus();
-    });
-
-    Ok(())
+/// Notes opened from outside the app (Finder, the CLI, drag and drop), queued per notes window
+/// until its frontend takes them, so a window that is still loading opens them once it's ready
+#[derive(Default)]
+struct PendingOpens {
+    by_window: Mutex<HashMap<String, Vec<String>>>,
+    // Files macOS hands over while launching, before setup has made the app state and the main
+    // window; setup opens them once both exist
+    before_setup: Mutex<Vec<PathBuf>>,
 }
 
 #[tauri::command]
-fn open_file_preview(app: AppHandle, path: String) -> Result<(), String> {
-    let file_path = PathBuf::from(&path);
-    if !file_path.exists() {
-        return Err(format!("File not found: {}", path));
-    }
-
-    if !try_select_in_notes_folder(&app, &file_path) {
-        create_preview_window(&app, &path)?;
-    }
-    Ok(())
+fn take_pending_notes(window: WebviewWindow, pending: State<'_, PendingOpens>) -> Vec<String> {
+    pending
+        .by_window
+        .lock()
+        .expect("pending opens mutex")
+        .remove(window.label())
+        .unwrap_or_default()
 }
 
-// Handle CLI arguments: open .md files in preview mode.
-// Returns true if a standalone preview window was created (file outside notes folder).
-fn handle_cli_args(app: &AppHandle, args: &[String], cwd: &str) -> bool {
+/// Open a markdown file as a tab in a notes window: by note ID when it is inside the notes
+/// folder, by absolute path otherwise. `target` is the window to open it in, if not the default.
+fn open_markdown_file(app: &AppHandle, path: &Path, target: Option<WebviewWindow>) {
+    if app.try_state::<AppState>().is_none() {
+        app.state::<PendingOpens>()
+            .before_setup
+            .lock()
+            .expect("pending opens mutex")
+            .push(path.to_path_buf());
+        return;
+    }
+
+    let id = match note_id_in_notes_folder(app, path) {
+        Some(id) => id,
+        None => match validate_markdown_path(&path.to_string_lossy()) {
+            Ok(canonical) => canonical.to_string_lossy().into_owned(),
+            Err(e) => {
+                eprintln!("Cannot open {:?}: {}", path, e);
+                return;
+            }
+        },
+    };
+
+    let window = match target.or_else(|| notes_window(app)) {
+        Some(window) => window,
+        None => match build_notes_window(app, None) {
+            Ok(window) => window,
+            Err(e) => {
+                eprintln!("{}", e);
+                return;
+            }
+        },
+    };
+
+    app.state::<PendingOpens>()
+        .by_window
+        .lock()
+        .expect("pending opens mutex")
+        .entry(window.label().to_string())
+        .or_default()
+        .push(id);
+    let _ = app.emit_to(window.label(), "open-notes", ());
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_focus();
+}
+
+// Handle CLI arguments: open .md files as tabs, or a directory as the notes folder
+fn handle_cli_args(app: &AppHandle, args: &[String], cwd: &str) {
     let mut opened_file = false;
-    let mut opened_preview = false;
 
     for arg in args.iter().skip(1) {
         // Skip flags
@@ -3667,11 +3652,7 @@ fn handle_cli_args(app: &AppHandle, args: &[String], cwd: &str) -> bool {
 
         if is_markdown_extension(&path) && path.is_file() {
             opened_file = true;
-            if !try_select_in_notes_folder(app, &path)
-                && create_preview_window(app, &path.to_string_lossy()).is_ok()
-            {
-                opened_preview = true;
-            }
+            open_markdown_file(app, &path, None);
         } else if path.is_dir() {
             let canonical = path.canonicalize().unwrap_or(path.clone());
             let state = app.state::<AppState>();
@@ -3701,8 +3682,6 @@ fn handle_cli_args(app: &AppHandle, args: &[String], cwd: &str) -> bool {
             let _ = window.set_focus();
         }
     }
-
-    opened_preview
 }
 
 // On macOS, WKWebView reads per-app preferences from NSUserDefaults to decide
@@ -3740,6 +3719,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             handle_cli_args(app, &args, &cwd);
         }))
+        .manage(PendingOpens::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
@@ -3807,42 +3787,25 @@ pub fn run() {
                 let _ = app.asset_protocol_scope().allow_directory(folder, true);
             }
 
-            // Handle CLI args on first launch; determine whether to show the main window.
-            // When a standalone preview is opened (file outside the notes folder) and the
-            // notes folder is already configured, the main window is closed so users only
-            // see the preview. When no notes folder is configured yet, the main window is
-            // always shown so new users can complete onboarding via the FolderPicker.
+            if let Some(main_window) = app.get_webview_window("main") {
+                let _ = main_window.show();
+            }
+
+            // Files opened from Finder while launching arrive before setup
+            let launch_files =
+                std::mem::take(&mut *app.state::<PendingOpens>().before_setup.lock().expect("pending opens mutex"));
+            for path in launch_files {
+                open_markdown_file(app.handle(), &path, None);
+            }
+
+            // Handle CLI args on first launch (files open as tabs once the window loads)
             let args: Vec<String> = std::env::args().collect();
-            let opened_preview = if args.len() > 1 {
+            if args.len() > 1 {
                 let cwd = std::env::current_dir()
                     .unwrap_or_default()
                     .to_string_lossy()
                     .into_owned();
-                handle_cli_args(app.handle(), &args, &cwd)
-            } else {
-                false
-            };
-
-            if let Some(main_window) = app.get_webview_window("main") {
-                let has_notes_folder = app
-                    .state::<AppState>()
-                    .app_config
-                    .read()
-                    .expect("app_config read lock")
-                    .notes_folder
-                    .is_some();
-
-                if opened_preview && has_notes_folder {
-                    // Existing user: notes folder is configured and a standalone preview
-                    // was opened. Close the hidden main window so only the preview is visible.
-                    let _ = main_window.hide();
-                } else {
-                    // Show the main window when:
-                    // - No standalone preview was opened (normal launch), OR
-                    // - No notes folder is configured yet (new user needs FolderPicker
-                    //   for onboarding, even if a preview is also showing).
-                    let _ = main_window.show();
-                }
+                handle_cli_args(app.handle(), &args, &cwd);
             }
 
             Ok(())
@@ -3851,12 +3814,12 @@ pub fn run() {
             // Handle drag-and-drop of .md files onto any window
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
                 let app = window.app_handle();
+                let target = app
+                    .get_webview_window(window.label())
+                    .filter(|w| is_notes_window(w.label()));
                 for path in paths {
-                    if is_markdown_extension(path)
-                        && path.is_file()
-                        && !try_select_in_notes_folder(app, path)
-                    {
-                        let _ = create_preview_window(app, &path.to_string_lossy());
+                    if is_markdown_extension(path) && path.is_file() {
+                        open_markdown_file(app, path, target.clone());
                     }
                 }
             }
@@ -3911,10 +3874,8 @@ pub fn run() {
             ai_execute_codex,
             ai_execute_opencode,
             ai_execute_ollama,
-            read_file_direct,
-            save_file_direct,
             import_file_to_folder,
-            open_file_preview,
+            take_pending_notes,
             install_cli,
             uninstall_cli,
             get_cli_status,
@@ -3923,18 +3884,15 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    // Use .run() callback to handle macOS "Open With" file events
+    // Use .run() callback to handle macOS "Open With" file events (Finder double-click)
     // RunEvent::Opened is macOS-only in Tauri v2
     app.run(|_app_handle, _event| {
         #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Opened { urls } = _event {
             for url in urls {
                 if let Ok(path) = url.to_file_path() {
-                    if is_markdown_extension(&path)
-                        && path.is_file()
-                        && !try_select_in_notes_folder(_app_handle, &path)
-                    {
-                        let _ = create_preview_window(_app_handle, &path.to_string_lossy());
+                    if is_markdown_extension(&path) && path.is_file() {
+                        open_markdown_file(_app_handle, &path, None);
                     }
                 }
             }
@@ -4009,7 +3967,7 @@ fn set_title_bar_theme(
     #[cfg(target_os = "windows")]
     {
         for (label, window) in app.webview_windows() {
-            if is_notes_window(&label) || label.starts_with("preview-") {
+            if is_notes_window(&label) {
                 windows_title_bar::apply_title_bar_theme(&window, is_dark, (r, g, b));
             }
         }

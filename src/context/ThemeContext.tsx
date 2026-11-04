@@ -366,6 +366,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     const root = document.documentElement;
     root.classList.add("zoom-no-transition");
     root.style.zoom = String(interfaceZoom);
+    // Read by popups to undo the zoom on their positioned wrapper (App.css)
+    root.style.setProperty("--interface-zoom", String(interfaceZoom));
     const raf = requestAnimationFrame(() => {
       root.classList.remove("zoom-no-transition");
     });

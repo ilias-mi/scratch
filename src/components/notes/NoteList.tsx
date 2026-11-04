@@ -1,6 +1,7 @@
 import { useCallback, useMemo, memo, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import * as ContextMenu from "@radix-ui/react-context-menu";
+import { ContextMenuContent } from "../ui/ContextMenuContent";
 import { useNotes, useNotesActions } from "../../context/NotesContext";
 import {
   ListItem,
@@ -91,6 +92,14 @@ export const NoteItem = memo(function NoteItem({
 }: NoteItemProps) {
   const ref = useRef<HTMLDivElement>(null);
   const handleClick = useCallback(() => onSelect(id), [onSelect, id]);
+  // Start reading the note on press, ahead of the click that selects it
+  const { prefetchNote } = useNotesActions();
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button === 0) prefetchNote(id);
+    },
+    [prefetchNote, id],
+  );
 
   useEffect(() => {
     if (isSelected) {
@@ -112,6 +121,7 @@ export const NoteItem = memo(function NoteItem({
     <div
       ref={ref}
       style={depth != null ? { paddingLeft: `${depth * 12}px` } : undefined}
+      onPointerDownCapture={handlePointerDown}
     >
       <ListItem
         title={title}
@@ -200,7 +210,7 @@ const NoteItemWithMenu = memo(function NoteItemWithMenu({
         </div>
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className="min-w-44 bg-bg border border-border rounded-md shadow-lg py-1 z-50">
+        <ContextMenuContent>
           <OpenNoteMenuItems id={id} itemClassName={menuItemClass} />
           <ContextMenu.Separator className={menuSeparatorClass} />
           <ContextMenu.Item className={menuItemClass} onSelect={handlePin}>
@@ -239,7 +249,7 @@ const NoteItemWithMenu = memo(function NoteItemWithMenu({
             <TrashIcon className="w-4 h-4 stroke-[1.6]" />
             Delete
           </ContextMenu.Item>
-        </ContextMenu.Content>
+        </ContextMenuContent>
       </ContextMenu.Portal>
     </ContextMenu.Root>
   );

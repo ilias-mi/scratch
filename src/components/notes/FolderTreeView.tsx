@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, useEffect, useRef, memo } from "react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
+import { ContextMenuContent } from "../ui/ContextMenuContent";
 import { useDroppable, useDraggable } from "@dnd-kit/core";
 import { useNotes, useNotesActions } from "../../context/NotesContext";
 import {
@@ -75,7 +76,9 @@ interface FileItemProps {
   onDuplicate: (id: string) => Promise<void>;
   onDelete: (id: string) => void;
   onMoveToParent?: (id: string, targetFolder: string) => void;
-  focusedItemKey?: string | null;
+  // Another item has keyboard focus, so this one's selection isn't highlighted. A boolean rather
+  // than the focused key, so moving focus re-renders only the items it affects
+  focusElsewhere: boolean;
 }
 
 const FileItem = memo(function FileItem({
@@ -90,7 +93,7 @@ const FileItem = memo(function FileItem({
   onDuplicate,
   onDelete,
   onMoveToParent,
-  focusedItemKey,
+  focusElsewhere,
 }: FileItemProps) {
   const itemRef = useRef<HTMLDivElement>(null);
   const handleClick = useCallback(
@@ -98,7 +101,14 @@ const FileItem = memo(function FileItem({
     [onNoteClick, note.id],
   );
   // Middle-click opens the note in a new tab
-  const { openNoteInNewTab } = useNotesActions();
+  const { openNoteInNewTab, prefetchNote } = useNotesActions();
+  // Start reading the note on press, ahead of the click that selects it
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button === 0) prefetchNote(note.id);
+    },
+    [prefetchNote, note.id],
+  );
   const handleAuxClick = useCallback(
     (e: React.MouseEvent) => {
       if (e.button === 1) openNoteInNewTab(note.id);
@@ -169,14 +179,14 @@ const FileItem = memo(function FileItem({
               ? "opacity-40"
               : isOver
                 ? "bg-accent/10 ring-1 ring-accent"
-                : isSelected &&
-                    (!focusedItemKey || focusedItemKey === `note:${note.id}`)
+                : isSelected && !focusElsewhere
                   ? "bg-bg-muted in-note-list-focus:ring-1 in-note-list-focus:ring-text-muted"
                   : isMultiSelected
                     ? "bg-bg-muted"
                     : "hover:bg-bg-muted"
           }`}
           style={{ paddingLeft: `${depth * 12 + 8}px`, paddingRight: "8px" }}
+          onPointerDownCapture={handlePointerDown}
           onClick={handleClick}
           onAuxClick={handleAuxClick}
           role="button"
@@ -193,7 +203,7 @@ const FileItem = memo(function FileItem({
         </div>
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className="min-w-44 bg-bg border border-border rounded-md shadow-lg py-1 z-50">
+        <ContextMenuContent>
           <OpenNoteMenuItems id={note.id} itemClassName={menuItemClass} />
           <ContextMenu.Separator className={menuSeparatorClass} />
           <ContextMenu.Item className={menuItemClass} onSelect={handlePin}>
@@ -260,7 +270,7 @@ const FileItem = memo(function FileItem({
             <TrashIcon className="w-4 h-4 stroke-[1.6]" />
             Delete
           </ContextMenu.Item>
-        </ContextMenu.Content>
+        </ContextMenuContent>
       </ContextMenu.Portal>
     </ContextMenu.Root>
   );
@@ -406,7 +416,7 @@ const FolderItemComponent = memo(function FolderItem({
                   onDuplicate={onDuplicateNote}
                   onDelete={onDeleteNote}
                   onMoveToParent={onMoveNoteToParent}
-                  focusedItemKey={focusedItemKey}
+                  focusElsewhere={!!focusedItemKey && focusedItemKey !== `note:${note.id}`}
                 />
               ))}
               {isEmpty && (
@@ -422,7 +432,7 @@ const FolderItemComponent = memo(function FolderItem({
         </div>
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className="min-w-44 bg-bg border border-border rounded-md shadow-lg py-1 z-50">
+        <ContextMenuContent>
           <ContextMenu.Item
             className={menuItemClass}
             onSelect={() => onCreateNoteHere(folder.path)}
@@ -486,7 +496,7 @@ const FolderItemComponent = memo(function FolderItem({
             <TrashIcon className="w-4 h-4 stroke-[1.6]" />
             Delete Folder
           </ContextMenu.Item>
-        </ContextMenu.Content>
+        </ContextMenuContent>
       </ContextMenu.Portal>
     </ContextMenu.Root>
   );
@@ -697,8 +707,12 @@ export function FolderTreeView({
     [visibleItems],
   );
 
+  // Read through a ref so the handler stays stable: a new one would re-render every item per click
+  const clickStateRef = useRef({ lastClickedNoteId, visibleNoteIds, selectedNoteId });
+  clickStateRef.current = { lastClickedNoteId, visibleNoteIds, selectedNoteId };
   const handleNoteClick = useCallback(
     (noteId: string, event: React.MouseEvent) => {
+      const { lastClickedNoteId, visibleNoteIds, selectedNoteId } = clickStateRef.current;
       const isMeta = event.metaKey || event.ctrlKey;
       const isShift = event.shiftKey;
 
@@ -746,14 +760,7 @@ export function FolderTreeView({
         selectNote(noteId);
       }
     },
-    [
-      lastClickedNoteId,
-      visibleNoteIds,
-      selectedNoteId,
-      setMultiSelectedNoteIds,
-      setLastClickedNoteId,
-      selectNote,
-    ],
+    [setMultiSelectedNoteIds, setLastClickedNoteId, selectNote],
   );
 
   // Track which item is focused for keyboard nav (separate from note selection)
@@ -889,7 +896,7 @@ export function FolderTreeView({
             onUnpin={unpinNote}
             onDuplicate={duplicateNote}
             onDelete={openDeleteNoteDialog}
-            focusedItemKey={focusedItemKey}
+            focusElsewhere={!!focusedItemKey && focusedItemKey !== `note:${note.id}`}
           />
         ))}
 
@@ -933,7 +940,7 @@ export function FolderTreeView({
             onUnpin={unpinNote}
             onDuplicate={duplicateNote}
             onDelete={openDeleteNoteDialog}
-            focusedItemKey={focusedItemKey}
+            focusElsewhere={!!focusedItemKey && focusedItemKey !== `note:${note.id}`}
           />
         ))}
       </div>

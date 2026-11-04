@@ -29,6 +29,11 @@ export async function openNoteWindow(noteId?: string): Promise<void> {
   return invoke("open_note_window", { noteId: noteId ?? null });
 }
 
+// Notes the backend was asked to open in this window (Finder, CLI, drag and drop)
+export async function takePendingNotes(): Promise<string[]> {
+  return invoke("take_pending_notes");
+}
+
 export async function deleteNote(id: string): Promise<void> {
   return invoke("delete_note", { id });
 }

@@ -12,6 +12,8 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Note, NoteMetadata } from "../types/note";
 import * as notesService from "../services/notes";
+import { importFileToFolder } from "../services/files";
+import { isExternalNoteId } from "../lib/noteIds";
 import type { SearchResult } from "../services/notes";
 import { renameNotePosition } from "../lib/notePositions";
 
@@ -29,6 +31,9 @@ function placeTab(tabs: string[], anchor: string | null, id: string, replace: bo
   next.splice(replace ? index : index + 1, replace ? 1 : 0, id);
   return next;
 }
+
+// Notes kept in memory so switching to a recently read note skips reading it from disk
+const NOTE_CACHE_SIZE = 30;
 
 // Separate contexts to prevent unnecessary re-renders
 // Data context: changes frequently, only subscribed by components that need the data
@@ -51,6 +56,8 @@ interface NotesDataContextValue {
 // Actions context: stable references, rarely causes re-renders
 interface NotesActionsContextValue {
   selectNote: (id: string) => Promise<void>;
+  // Starts reading a note that is likely to be selected next (e.g. on pointer down)
+  prefetchNote: (id: string) => void;
   createNote: (inNewTab?: boolean) => Promise<void>;
   openNoteInNewTab: (id: string) => void;
   closeTab: (id: string) => void;
@@ -74,6 +81,8 @@ interface NotesActionsContextValue {
   renameFolder: (oldPath: string, newName: string) => Promise<void>;
   moveNote: (id: string, targetFolder: string) => Promise<void>;
   moveFolder: (path: string, targetParent: string) => Promise<void>;
+  // Copies a note opened from outside the notes folder into it and puts the copy in its tab
+  saveToNotesFolder: (id: string) => Promise<void>;
 }
 
 const NotesDataContext = createContext<NotesDataContextValue | null>(null);
@@ -100,6 +109,10 @@ export function NotesProvider({
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
   const [currentNote, setCurrentNote] = useState<Note | null>(null);
+  // Read by actions instead of depending on currentNote, so the actions context stays stable
+  // (a new value re-renders every note in the sidebar)
+  const currentNoteRef = useRef(currentNote);
+  currentNoteRef.current = currentNote;
   const [notesFolder, setNotesFolderState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -130,6 +143,53 @@ export function NotesProvider({
   const writeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   // Briefly maps renamed IDs to their new ID so writes queued under the old ID follow the file
   const renamedIdsRef = useRef<Map<string, string>>(new Map());
+  // Notes inside the folder as last read or saved, most recent last. Entries are dropped when the
+  // watcher reports their file changed, and only used while their modified time matches the list.
+  // Files outside the folder aren't watched, so they're always read from disk.
+  const noteCacheRef = useRef<Map<string, Note>>(new Map());
+  const noteReadsRef = useRef<Map<string, Promise<Note>>>(new Map());
+
+  const cacheNote = useCallback((note: Note) => {
+    if (isExternalNoteId(note.id)) return;
+    const cache = noteCacheRef.current;
+    cache.delete(note.id);
+    cache.set(note.id, note);
+    if (cache.size > NOTE_CACHE_SIZE) cache.delete(cache.keys().next().value!);
+  }, []);
+
+  const cachedNote = useCallback((id: string) => {
+    const note = noteCacheRef.current.get(id);
+    const listed = notesRef.current.find((meta) => meta.id === id);
+    return note && listed?.modified === note.modified ? note : undefined;
+  }, []);
+
+  // Reads a note once queued saves have landed, sharing a read already in flight
+  const readNoteShared = useCallback(
+    (id: string) => {
+      const inFlight = noteReadsRef.current.get(id);
+      if (inFlight) return inFlight;
+      const read = writeQueueRef.current
+        .then(() => notesService.readNote(id))
+        .then((note) => {
+          // A save made meanwhile is newer than what was read
+          if (!noteCacheRef.current.has(id)) cacheNote(note);
+          return note;
+        })
+        .finally(() => noteReadsRef.current.delete(id));
+      noteReadsRef.current.set(id, read);
+      return read;
+    },
+    [cacheNote],
+  );
+
+  const prefetchNote = useCallback(
+    (id: string) => {
+      if (isExternalNoteId(id) || cachedNote(id) || id === selectedNoteIdRef.current) return;
+      noteCacheRef.current.delete(id);
+      readNoteShared(id).catch(() => {});
+    },
+    [cachedNote, readNoteShared],
+  );
 
   const enqueueWrite = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
     const result = writeQueueRef.current.then(task);
@@ -160,9 +220,11 @@ export function NotesProvider({
     try {
       const notesList = await notesService.listNotes();
       setNotes(notesList);
-      // Drop tabs of notes that no longer exist (deleted elsewhere)
+      // Drop tabs of notes that no longer exist (deleted elsewhere); files outside the folder stay
       const ids = new Set(notesList.map((note) => note.id));
-      updateTabs((id) => (ids.has(id) || id === selectedNoteIdRef.current ? id : null));
+      updateTabs((id) =>
+        ids.has(id) || isExternalNoteId(id) || id === selectedNoteIdRef.current ? id : null,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load notes");
     }
@@ -197,17 +259,22 @@ export function NotesProvider({
           }),
         );
       }
-      // Wait for queued saves, so switching back to a note just left reads what it saved
-      await writeQueueRef.current;
-      if (requestId !== selectRequestIdRef.current) return;
-      const note = await notesService.readNote(id);
+      // A cached note shows in the same render as the selection, without reading the file
+      const cached = cachedNote(id);
+      if (cached) {
+        setCurrentNote(cached);
+        return;
+      }
+      noteCacheRef.current.delete(id);
+      // Reads wait for queued saves, so switching back to a note just left reads what it saved
+      const note = await readNoteShared(id);
       if (requestId !== selectRequestIdRef.current) return;
       setCurrentNote(note);
     } catch (err) {
       if (requestId !== selectRequestIdRef.current) return;
       setError(err instanceof Error ? err.message : "Failed to load note");
     }
-  }, []);
+  }, [cachedNote, readNoteShared]);
 
   // Closes matching tabs; when the active one closes, its right (else left) neighbor takes over
   const closeTabs = useCallback(
@@ -251,19 +318,20 @@ export function NotesProvider({
     if (!selectedNoteIdRef.current) return;
     try {
       const note = await notesService.readNote(selectedNoteIdRef.current);
+      cacheNote(note);
       setCurrentNote(note);
       setHasExternalChanges(false);
       setReloadVersion((v) => v + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to reload note");
     }
-  }, []);
+  }, [cacheNote]);
 
   const createNote = useCallback(async (inNewTab = false) => {
     try {
       // Derive target folder from the selected note's parent path
       let targetFolder: string | undefined;
-      if (selectedNoteIdRef.current) {
+      if (selectedNoteIdRef.current && !isExternalNoteId(selectedNoteIdRef.current)) {
         const lastSlash = selectedNoteIdRef.current.lastIndexOf("/");
         if (lastSlash > 0) {
           targetFolder = selectedNoteIdRef.current.substring(0, lastSlash);
@@ -304,9 +372,12 @@ export function NotesProvider({
   const saveNote = useCallback(
     async (content: string, noteId?: string) => {
       // Use provided noteId (for flush saves) or fall back to currentNote.id
-      const requestedId = noteId || currentNote?.id;
+      const requestedId = noteId || currentNoteRef.current?.id;
       if (!requestedId) return;
       let savingId = requestedId;
+      // Keep the cache current right away, so switching back before the write lands shows the edit
+      const cached = noteCacheRef.current.get(resolveNoteId(requestedId));
+      if (cached) cacheNote({ ...cached, content });
 
       try {
         const updated = await enqueueWrite(() => {
@@ -319,6 +390,7 @@ export function NotesProvider({
         // Clear external changes flag - if it was set by our own save, we want to ignore it
         setHasExternalChanges(false);
 
+        if (noteCacheRef.current.get(updated.id)?.content === content) cacheNote(updated);
         // Only update state if we're still on the note we saved
         if (selectedNoteIdRef.current === updated.id) {
           setCurrentNote(updated);
@@ -337,7 +409,7 @@ export function NotesProvider({
         recentlySavedRef.current.delete(savingId);
       }
     },
-    [currentNote, enqueueWrite, resolveNoteId, scheduleRefresh]
+    [cacheNote, enqueueWrite, resolveNoteId, scheduleRefresh]
   );
 
   const renameNote = useCallback(
@@ -352,6 +424,8 @@ export function NotesProvider({
         });
         if (renamed.id !== id) {
           renameNotePosition(id, renamed.id);
+          noteCacheRef.current.delete(id);
+          cacheNote(renamed);
           updateTabs((tabId) => (tabId === id ? renamed.id : tabId));
           void emit("note-renamed", {
             from: id,
@@ -378,13 +452,14 @@ export function NotesProvider({
         throw err;
       }
     },
-    [enqueueWrite, refreshNotes, updateTabs]
+    [cacheNote, enqueueWrite, refreshNotes, updateTabs]
   );
 
   const deleteNote = useCallback(
     async (id: string) => {
       try {
         await notesService.deleteNote(id);
+        noteCacheRef.current.delete(id);
 
         // Clean up pinned status for deleted note
         const currentSettings = await notesService.getSettings();
@@ -525,6 +600,7 @@ export function NotesProvider({
     async (oldPath: string, newName: string) => {
       try {
         await notesService.renameFolder(oldPath, newName);
+        noteCacheRef.current.clear();
 
         // Compute new folder path
         const lastSlash = oldPath.lastIndexOf("/");
@@ -567,6 +643,7 @@ export function NotesProvider({
       try {
         const newId = await notesService.moveNote(id, targetFolder);
         renameNotePosition(id, newId);
+        noteCacheRef.current.delete(id);
         updateTabs((tabId) => (tabId === id ? newId : tabId));
         // Update selection if we moved the selected note
         setSelectedNoteId((prevId) => {
@@ -592,6 +669,7 @@ export function NotesProvider({
     async (path: string, targetParent: string) => {
       try {
         await notesService.moveFolder(path, targetParent);
+        noteCacheRef.current.clear();
 
         // Compute new folder path
         const folderName = path.includes("/")
@@ -631,6 +709,7 @@ export function NotesProvider({
   const setNotesFolder = useCallback(async (path: string) => {
     try {
       await notesService.setNotesFolder(path);
+      noteCacheRef.current.clear();
       setNotesFolderState(path);
       // Start file watcher after setting folder
       await notesService.startFileWatcher();
@@ -645,6 +724,7 @@ export function NotesProvider({
   // Used when the CLI sets the notes folder and emits an event.
   const syncNotesFolder = useCallback(async (path: string) => {
     try {
+      noteCacheRef.current.clear();
       setNotesFolderState(path);
       setTabs([]);
       setSelectedNoteId(null);
@@ -753,6 +833,7 @@ export function NotesProvider({
       const { from, to, window } = payload;
       if (window === ownWindow) return;
       renamedIdsRef.current.set(from, to);
+      noteCacheRef.current.delete(from);
       setTimeout(() => {
         void enqueueWrite(async () => {
           renamedIdsRef.current.delete(from);
@@ -800,7 +881,9 @@ export function NotesProvider({
 
       // Filter out notes we recently saved ourselves
       for (const id of event.payload.changed_ids || []) {
-        if (!recentlySavedRef.current.has(id)) pendingIds.add(id);
+        if (recentlySavedRef.current.has(id)) continue;
+        pendingIds.add(id);
+        noteCacheRef.current.delete(id);
       }
 
       if (pendingIds.size > 0) {
@@ -825,17 +908,66 @@ export function NotesProvider({
     };
   }, [refreshNotes]);
 
-  // Listen for "select-note" events from the backend (CLI, drag-drop, Open With, import from preview)
+  // Open notes queued by the backend (Finder, CLI, drag and drop) as tabs, once the folder is
+  // known: on startup, and whenever more arrive
   useEffect(() => {
-    const unlisten = listen<string>("select-note", (event) => {
-      // Refresh the notes list so the sidebar shows the new note immediately
+    if (!notesFolder) return;
+    const openPending = async () => {
+      const ids = await notesService.takePendingNotes();
+      if (ids.length === 0) return;
+      setTabs((prev) => {
+        let next = prev;
+        let anchor = selectedNoteIdRef.current;
+        for (const id of ids) {
+          if (!next.includes(id)) next = placeTab(next, anchor, id, false);
+          anchor = id;
+        }
+        return next;
+      });
       refreshNotes();
-      selectNote(event.payload);
+      selectNote(ids[ids.length - 1]);
+    };
+    openPending().catch(console.error);
+    const unlisten = listen("open-notes", () => {
+      openPending().catch(console.error);
     });
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [selectNote, refreshNotes]);
+  }, [notesFolder, selectNote, refreshNotes]);
+
+  // Files outside the notes folder aren't watched, so check them when the window regains focus
+  useEffect(() => {
+    const handleFocus = async () => {
+      const note = currentNoteRef.current;
+      if (!note || !isExternalNoteId(note.id)) return;
+      try {
+        const onDisk = await notesService.readNote(note.id);
+        if (
+          onDisk.modified !== currentNoteRef.current?.modified ||
+          onDisk.content !== currentNoteRef.current?.content
+        ) {
+          if (currentNoteRef.current?.id === note.id) setHasExternalChanges(true);
+        }
+      } catch {
+        // The file may have been moved or deleted
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, []);
+
+  const saveToNotesFolder = useCallback(
+    async (id: string) => {
+      // Let queued saves land first, so the copy has the latest edits
+      await writeQueueRef.current;
+      const imported = await importFileToFolder(id);
+      updateTabs((tabId) => (tabId === id ? imported.id : tabId));
+      await refreshNotes();
+      if (selectedNoteIdRef.current === id) await selectNote(imported.id);
+    },
+    [refreshNotes, selectNote, updateTabs],
+  );
 
   // Refresh notes when folder changes
   useEffect(() => {
@@ -880,6 +1012,7 @@ export function NotesProvider({
   const actionsValue = useMemo<NotesActionsContextValue>(
     () => ({
       selectNote,
+      prefetchNote,
       createNote,
       openNoteInNewTab,
       closeTab,
@@ -903,9 +1036,11 @@ export function NotesProvider({
       renameFolder: renameFolderAction,
       moveNote: moveNoteAction,
       moveFolder: moveFolderAction,
+      saveToNotesFolder,
     }),
     [
       selectNote,
+      prefetchNote,
       createNote,
       openNoteInNewTab,
       closeTab,
@@ -929,6 +1064,7 @@ export function NotesProvider({
       renameFolderAction,
       moveNoteAction,
       moveFolderAction,
+      saveToNotesFolder,
     ]
   );
 
@@ -966,10 +1102,3 @@ export function useNotes() {
   return { ...data, ...actions };
 }
 
-// Optional hook that returns null when outside a NotesProvider (for preview mode)
-export function useOptionalNotes() {
-  const data = useContext(NotesDataContext);
-  const actions = useContext(NotesActionsContext);
-  if (!data || !actions) return null;
-  return { ...data, ...actions };
-}

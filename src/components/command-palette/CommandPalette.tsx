@@ -54,6 +54,7 @@ import {
   ExternalLinkIcon,
 } from "../icons";
 import { mod, shift } from "../../lib/platform";
+import { isExternalNoteId } from "../../lib/noteIds";
 import type { AiProvider } from "../../services/ai";
 
 interface Command {
@@ -147,7 +148,7 @@ export function CommandPalette({
 
   // Memoize commands array
   const commands = useMemo<Command[]>(() => {
-    const baseCommands: Command[] = [
+    let baseCommands: Command[] = [
       {
         id: "new-note",
         label: "New Note",
@@ -390,6 +391,12 @@ export function CommandPalette({
           },
         },
       );
+
+      // A file opened from outside the notes folder can't be pinned, duplicated, deleted or AI-edited
+      if (isExternalNoteId(currentNote.id)) {
+        const folderOnly = /^(pin-note|unpin-note|duplicate-note|delete-note|ai-edit-)/;
+        baseCommands = baseCommands.filter((command) => !folderOnly.test(command.id));
+      }
     }
 
     // Add git commands when git integration is visible and initialized

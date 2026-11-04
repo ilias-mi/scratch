@@ -33,6 +33,10 @@ interface SidebarProps {
   onOpenSettings?: () => void;
 }
 
+// A constant: dnd-kit memoizes the sensor on this object, and a new one on each render would
+// change the drag context and re-render every draggable item in the note list
+const POINTER_SENSOR_OPTIONS = { activationConstraint: { distance: 5 } };
+
 // Memoized: toggling the sidebar re-renders App, and the note list needn't re-render with it
 export const Sidebar = memo(function Sidebar({ onOpenSettings }: SidebarProps) {
   const {
@@ -62,9 +66,7 @@ export const Sidebar = memo(function Sidebar({ onOpenSettings }: SidebarProps) {
   multiSelectedRef.current = multiSelectedNoteIds;
 
   // dnd-kit
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  );
+  const sensors = useSensors(useSensor(PointerSensor, POINTER_SENSOR_OPTIONS));
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const data = event.active.data.current;

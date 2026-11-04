@@ -1363,6 +1363,19 @@ table.not-prose th {
   transition: none !important;
 }
 
+/* Popups (Radix menus and tooltips, tippy) are positioned in screen pixels, but under the
+   interface zoom on <html> the browser scales that offset too, so they open away from their
+   anchor and past the window edge. Undo the zoom on the positioned wrapper and reapply it to the
+   popup inside, so the offset lands where it was computed and the popup keeps its zoomed size. */
+[data-radix-popper-content-wrapper],
+[data-tippy-root] {
+  zoom: calc(1 / var(--interface-zoom, 1));
+}
+[data-radix-popper-content-wrapper] > *,
+[data-tippy-root] > * {
+  zoom: var(--interface-zoom, 1);
+}
+
 /* Suppress sidebar transition during drag resize */
 .sidebar-no-transition [data-sidebar] {
   transition: none !important;

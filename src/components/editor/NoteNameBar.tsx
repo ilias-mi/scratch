@@ -1,6 +1,7 @@
 import { forwardRef, memo, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "../../lib/utils";
+import { noteFileName } from "../../lib/noteIds";
 
 interface NoteNameBarProps {
   noteId: string;
@@ -17,8 +18,7 @@ export const NoteNameBar = memo(
     { noteId, visible, focusRequest, onRename, onDone },
     ref,
   ) {
-    const slash = noteId.lastIndexOf("/");
-    const name = noteId.substring(slash + 1);
+    const { name, ext } = noteFileName(noteId);
     const [value, setValue] = useState(name);
     const inputRef = useRef<HTMLInputElement>(null);
     const cancelRef = useRef(false);
@@ -72,7 +72,7 @@ export const NoteNameBar = memo(
             spellCheck={false}
             className="flex-1 min-w-0 bg-transparent font-medium text-text outline-none placeholder:text-text-muted"
           />
-          <span className="shrink-0 text-text-muted">.md</span>
+          <span className="shrink-0 text-text-muted">{ext}</span>
         </div>
       </div>
     );
