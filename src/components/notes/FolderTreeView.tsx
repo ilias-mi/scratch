@@ -263,7 +263,7 @@ const FileItem = memo(function FileItem({
           <ContextMenu.Item
             className={
               menuItemClass +
-              " text-red-500 hover:text-red-500 focus:text-red-500"
+              " text-danger hover:text-danger focus:text-danger"
             }
             onSelect={() => onDelete(note.id)}
           >
@@ -489,7 +489,7 @@ const FolderItemComponent = memo(function FolderItem({
           <ContextMenu.Item
             className={
               menuItemClass +
-              " text-red-500 hover:text-red-500 focus:text-red-500"
+              " text-danger hover:text-danger focus:text-danger"
             }
             onSelect={() => onDeleteFolder(folder.path)}
           >

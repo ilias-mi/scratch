@@ -220,8 +220,8 @@ export function ToolsSettingsSection() {
             </p>
 
             {cli.error ? (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-md p-3">
-                <p className="text-sm text-red-500">
+              <div className="bg-danger/10 border border-danger/20 rounded-md p-3">
+                <p className="text-sm text-danger">
                   Failed to check CLI status. Please restart the app.
                 </p>
               </div>

@@ -203,17 +203,17 @@ export function AiEditModal({
             </div>
           ) : cliInstalled === false ? (
             <>
-              <div className="text-sm stack-y-0.5 p-3 bg-orange-500/10 rounded-md ">
-                <div className="font-medium text-orange-700 dark:text-orange-400">
+              <div className="text-sm stack-y-0.5 p-3 bg-warning/10 rounded-md ">
+                <div className="font-medium text-warning">
                   {cliName} Not Found
                 </div>
-                <div className="text-orange-700/80 dark:text-orange-400/80">
+                <div className="text-text">
                   You'll need {cliName} to use this feature. Visit{" "}
                   <a
                     href={installUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-orange-700 dark:text-orange-400 font-medium hover:underline"
+                    className="text-warning font-medium hover:underline"
                   >
                     {providerName}
                   </a>{" "}

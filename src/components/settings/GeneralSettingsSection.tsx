@@ -433,7 +433,7 @@ export function GeneralSettingsSection() {
                           size="sm"
                           onClick={handleRemoveRemote}
                           disabled={isAddingRemote}
-                          className="ml-auto text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                          className="ml-auto text-danger hover:text-danger/80 hover:bg-danger/10"
                         >
                           Remove
                         </Button>
@@ -495,7 +495,7 @@ export function GeneralSettingsSection() {
                           <span className="text-sm text-text font-medium">
                             Tracking
                           </span>
-                          <span className="text-sm font-medium text-amber-500">
+                          <span className="text-sm font-medium text-warning">
                             Not set up
                           </span>
                         </div>
@@ -528,7 +528,7 @@ export function GeneralSettingsSection() {
                     <span className="text-sm text-text font-medium">
                       Remote
                     </span>
-                    <span className="text-sm font-medium text-red-500">
+                    <span className="text-sm font-medium text-danger">
                       Not connected
                     </span>
                   </div>
@@ -638,8 +638,8 @@ export function GeneralSettingsSection() {
               {/* Error display */}
               {lastError && (
                 <div className="pt-3 border-t border-border">
-                  <div className="bg-red-500/10 rounded-md p-3">
-                    <p className="text-sm text-red-500 first-letter:capitalize">
+                  <div className="bg-danger/10 rounded-md p-3">
+                    <p className="text-sm text-danger first-letter:capitalize">
                       {lastError}
                     </p>
                     {(lastError.includes("Authentication") ||
@@ -648,7 +648,7 @@ export function GeneralSettingsSection() {
                         href="https://docs.github.com/en/authentication/connecting-to-github-with-ssh"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-sm text-red-500 hover:text-red-600 underline font-medium mt-1 inline-block"
+                        className="text-sm text-danger hover:text-danger/80 underline font-medium mt-1 inline-block"
                       >
                         Learn more about SSH authentication
                       </a>
@@ -656,7 +656,7 @@ export function GeneralSettingsSection() {
                     <Button
                       onClick={clearError}
                       variant="link"
-                      className="block text-sm h-auto p-0 mt-2 text-red-500 hover:text-red-600 font-medium"
+                      className="block text-sm h-auto p-0 mt-2 text-danger hover:text-danger/80 font-medium"
                     >
                       Dismiss
                     </Button>

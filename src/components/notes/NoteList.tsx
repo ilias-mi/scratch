@@ -242,7 +242,7 @@ const NoteItemWithMenu = memo(function NoteItemWithMenu({
           <ContextMenu.Item
             className={
               menuItemClass +
-              " text-red-500 hover:text-red-500 focus:text-red-500"
+              " text-danger hover:text-danger focus:text-danger"
             }
             onSelect={() => onDelete(id)}
           >

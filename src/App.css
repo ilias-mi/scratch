@@ -25,35 +25,35 @@
 
 /* Theme color tokens - Light mode (default) */
 :root {
-  --color-bg: #ffffff;
-  --color-bg-secondary: #fafaf9;
+  --color-bg: #fcfbf9;
+  --color-bg-secondary: #f5f4f1;
   --color-bg-muted: rgba(28, 25, 23, 0.06);
   --color-bg-emphasis: rgba(28, 25, 23, 0.09);
-  --color-text: #1c1917;
-  --color-text-muted: #78716c;
-  --color-text-inverse: #fafaf9;
+  --color-text: #292524;
+  --color-text-muted: #736b66;
+  --color-text-inverse: #fcfbf9;
   --color-border: rgba(28, 25, 23, 0.08);
   --color-accent: #1c1917;
-  --color-selection: rgba(250, 204, 21, 0.4); /* Tailwind yellow-400 */
+  --color-selection: rgba(245, 197, 24, 0.4);
 
-  --highlight-yellow: rgba(250, 204, 21, 0.45);
-  --highlight-green: rgba(74, 222, 128, 0.4);
-  --highlight-blue: rgba(96, 165, 250, 0.4);
-  --highlight-pink: rgba(244, 114, 182, 0.4);
-  --highlight-gray: rgba(168, 162, 158, 0.4);
+  --highlight-yellow: rgba(245, 197, 24, 0.4);
+  --highlight-green: rgba(92, 196, 122, 0.32);
+  --highlight-blue: rgba(106, 165, 240, 0.32);
+  --highlight-pink: rgba(238, 127, 184, 0.3);
+  --highlight-gray: rgba(168, 162, 158, 0.35);
 
-  --callout-note: #2563eb;
-  --callout-info: #0891b2;
-  --callout-tip: #16a34a;
-  --callout-important: #7c3aed;
-  --callout-definition: #0d9488;
-  --callout-example: #4f46e5;
-  --callout-question: #ea580c;
-  --callout-summary: #db2777;
-  --callout-exam: #e11d48;
-  --callout-warning: #d97706;
-  --callout-caution: #dc2626;
-  --callout-plain: #78716c;
+  --callout-note: #2457c5;
+  --callout-info: #0e6f8c;
+  --callout-tip: #2a7330;
+  --callout-important: #6d3fc0;
+  --callout-definition: #0f7468;
+  --callout-example: #4a4fc4;
+  --callout-question: #a84a0c;
+  --callout-summary: #b62f6e;
+  --callout-exam: #c0283f;
+  --callout-warning: #8c5905;
+  --callout-caution: #c42b2b;
+  --callout-plain: #6b635e;
 
   /* Editor font settings - simplified (overridden by ThemeContext) */
   --editor-font-family:
@@ -72,66 +72,66 @@
   --editor-h5-size: 16px;
   --editor-h6-size: 16px;
 
-  /* Syntax highlighting colors - Light (GitHub) */
-  --color-syntax-keyword: #d73a49;
-  --color-syntax-string: #032f62;
-  --color-syntax-number: #005cc5;
-  --color-syntax-comment: #6a737d;
-  --color-syntax-function: #6f42c1;
-  --color-syntax-variable: #e36209;
-  --color-syntax-type: #22863a;
-  --color-syntax-operator: #d73a49;
-  --color-syntax-attr: #005cc5;
+  /* Syntax highlighting colors - Light (same hues as the callouts) */
+  --color-syntax-keyword: #c42b3c;
+  --color-syntax-string: #2a7330;
+  --color-syntax-number: #a84a0c;
+  --color-syntax-comment: #6b635e;
+  --color-syntax-function: #6d3fc0;
+  --color-syntax-variable: #2457c5;
+  --color-syntax-type: #0e6f8c;
+  --color-syntax-operator: #c42b3c;
+  --color-syntax-attr: #0f7468;
 
   /* Inline code color */
-  --color-code: #d73a49;
+  --color-code: #c42b3c;
 }
 
 /* Theme color tokens - Dark mode */
 .dark {
-  --color-bg: rgb(22, 20, 19);
-  --color-bg-secondary: rgb(14, 12, 11);
+  --color-bg: #1c1a19;
+  --color-bg-secondary: #141211;
   --color-bg-muted: rgba(250, 249, 249, 0.05);
   --color-bg-emphasis: rgba(250, 249, 249, 0.08);
-  --color-text: #fafaf9;
+  --color-text: #e7e5e4;
   --color-text-muted: #a8a29e;
-  --color-text-inverse: #0c0a09;
-  --color-border: rgba(250, 249, 249, 0.07);
-  --color-accent: #fafaf9;
-  --color-selection: rgba(253, 224, 71, 0.35); /* Tailwind yellow-300 */
+  --color-text-inverse: #1c1a19;
+  --color-border: rgba(250, 249, 249, 0.08);
+  --color-accent: #e7e5e4;
+  --color-selection: rgba(242, 201, 76, 0.28);
 
-  --highlight-yellow: rgba(253, 224, 71, 0.3);
-  --highlight-green: rgba(74, 222, 128, 0.28);
-  --highlight-blue: rgba(96, 165, 250, 0.32);
-  --highlight-pink: rgba(244, 114, 182, 0.3);
-  --highlight-gray: rgba(168, 162, 158, 0.3);
+  --highlight-yellow: rgba(242, 201, 76, 0.28);
+  --highlight-green: rgba(92, 196, 122, 0.24);
+  --highlight-blue: rgba(106, 165, 240, 0.28);
+  --highlight-pink: rgba(238, 127, 184, 0.26);
+  --highlight-gray: rgba(168, 162, 158, 0.26);
 
-  --callout-note: #60a5fa;
-  --callout-info: #22d3ee;
-  --callout-tip: #4ade80;
-  --callout-important: #a78bfa;
-  --callout-definition: #2dd4bf;
-  --callout-example: #818cf8;
-  --callout-question: #fb923c;
-  --callout-summary: #f472b6;
-  --callout-exam: #fb7185;
-  --callout-warning: #fbbf24;
-  --callout-caution: #f87171;
+  --callout-note: #7aaef5;
+  --callout-info: #5cc3d9;
+  --callout-tip: #74c98b;
+  --callout-important: #b5a0f3;
+  --callout-definition: #5cc5b3;
+  --callout-example: #9399f0;
+  --callout-question: #f09a5e;
+  --callout-summary: #ec8bbb;
+  --callout-exam: #f3818f;
+  --callout-warning: #e6b955;
+  --callout-caution: #f07c7c;
   --callout-plain: #a8a29e;
 
-  /* Syntax highlighting colors - Dark (GitHub) */
-  --color-syntax-keyword: #ea4a5a;
-  --color-syntax-string: #79b8ff;
-  --color-syntax-number: #79b8ff;
-  --color-syntax-comment: #959da5;
-  --color-syntax-function: #b392f0;
-  --color-syntax-variable: #fb8532;
-  --color-syntax-type: #7bcc72;
-  --color-syntax-operator: #ea4a5a;
-  --color-syntax-attr: #79b8ff;
+  /* Syntax highlighting colors - Dark (same hues as the callouts) */
+  --color-syntax-keyword: #ff7b72;
+  --color-syntax-string: #8fcf8a;
+  --color-syntax-number: #f0a35e;
+  --color-syntax-comment: #968e88;
+  --color-syntax-function: #c3a6f5;
+  --color-syntax-variable: #7aaef5;
+  --color-syntax-type: #6cc5d8;
+  --color-syntax-operator: #ff7b72;
+  --color-syntax-attr: #6fcfbf;
 
   /* Inline code color */
-  --color-code: #ea4a5a;
+  --color-code: #ff7b72;
 }
 
 /* Register theme colors with Tailwind */
@@ -168,6 +168,10 @@
 
   /* Accent colors */
   --color-accent: var(--color-accent);
+
+  /* Status colors (shared with the caution and warning callouts) */
+  --color-danger: var(--callout-caution);
+  --color-warning: var(--callout-warning);
 }
 
 /* Base styles */
@@ -675,12 +679,12 @@ html.dark {
 
 .hljs-deletion {
   color: var(--color-syntax-variable);
-  background-color: rgba(224, 108, 117, 0.1);
+  background-color: color-mix(in srgb, var(--color-syntax-keyword) 10%, transparent);
 }
 
 .hljs-addition {
   color: var(--color-syntax-string);
-  background-color: rgba(152, 195, 121, 0.1);
+  background-color: color-mix(in srgb, var(--color-syntax-string) 10%, transparent);
 }
 
 .hljs-emphasis {
@@ -751,7 +755,7 @@ html.dark {
 }
 
 .prose .inline-math-error {
-  color: #dc2626;
+  color: var(--callout-caution);
   font-family: var(--font-mono);
 }
 
@@ -778,7 +782,7 @@ html.dark {
 }
 
 .prose .block-math-error {
-  color: #dc2626;
+  color: var(--callout-caution);
   font-family: var(--font-mono);
 }
 
