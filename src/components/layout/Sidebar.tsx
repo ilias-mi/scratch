@@ -82,7 +82,8 @@ export const Sidebar = memo(function Sidebar({ onOpenSettings }: SidebarProps) {
       if (selected.has(noteId) && selected.size > 1) {
         setDragCount(selected.size);
       } else {
-        setMultiSelectedNoteIds(new Set([noteId]));
+        // A single dragged note moves by its own ID, so it isn't added to the selection
+        setMultiSelectedNoteIds((prev) => (prev.size ? new Set() : prev));
         setDragCount(1);
       }
     } else if (data?.type === "folder") {

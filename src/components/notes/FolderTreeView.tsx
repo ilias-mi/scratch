@@ -754,8 +754,10 @@ export function FolderTreeView({
         setLastClickedNoteId(noteId);
         // Don't change editor note on Cmd+Click
       } else {
-        // Plain click: reset selection, open in editor
-        setMultiSelectedNoteIds(new Set([noteId]));
+        // Plain click: clear the multi-selection, open in editor. The clicked note isn't kept
+        // in it: once something else selects a note (new note, wikilink, palette), it would
+        // stay highlighted next to the selected one
+        setMultiSelectedNoteIds((prev) => (prev.size ? new Set() : prev));
         setLastClickedNoteId(noteId);
         selectNote(noteId);
       }

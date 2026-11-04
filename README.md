@@ -1,5 +1,7 @@
 # Scratch
 
+![Scratch demo: browsing notes with the section path and heading tree, writing a new note with markdown shortcuts, a callout and inline math, markdown source mode, and dark mode](docs/demo.webp)
+
 > [!NOTE]
 > This is a fork of [erictli/scratch](https://github.com/erictli/scratch) that contains vibe-coded changes to the original project. They were built with AI assistance and are not part of the upstream app.
 >
@@ -60,10 +62,6 @@ A minimalist, offline-first markdown note-taking app for macOS, Windows, and Lin
 - **Customizable** - Theme, typography, page width, and RTL text direction
 - **Git integration** - Optional version control with push/pull for multi-device sync
 - **Lightweight** - 5-10x smaller than Obsidian or Notion
-
-## Screenshot
-
-![Screenshot](docs/screenshot.png)
 
 ## Installation
 
